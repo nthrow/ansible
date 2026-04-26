@@ -1,0 +1,29 @@
+---
+- name: Install NetworkManager + bluetooth
+  community.general.apk:
+    name:
+      - networkmanager
+      - networkmanager-openrc
+      - networkmanager-cli
+      - networkmanager-wifi
+      - networkmanager-wwan
+      - networkmanager-bluetooth
+      - bluez
+      - bluez-openrc
+      - bluedevil
+      - iw
+      - wpa_supplicant
+      - wireguard-tools
+      - wireguard-tools-openrc
+    state: present
+
+- name: Enable services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    runlevel: default
+    state: started
+  loop:
+    - networkmanager
+    - bluetooth
+    - chronyd

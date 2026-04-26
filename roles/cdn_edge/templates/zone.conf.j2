@@ -1,0 +1,63 @@
+{# One server block per zone. TLS terminates here when item.tls_cert is set;
+   otherwise plain HTTP only (PoC / internal-only zones). #}
+{% set listen_v4 = item.listen_v4 | default(none) %}
+{% set listen_v6 = item.listen_v6 | default(none) %}
+{% if item.tls_cert is defined %}
+server {
+{% if listen_v4 %}
+    listen {{ listen_v4 }}:443 ssl http2;
+{% else %}
+    listen 443 ssl http2;
+{% endif %}
+{% if listen_v6 %}
+    listen [{{ listen_v6 }}]:443 ssl http2;
+{% endif %}
+
+    server_name {{ item.server_names | join(' ') }};
+
+    ssl_certificate     {{ item.tls_cert }};
+    ssl_certificate_key {{ item.tls_key  }};
+    ssl_protocols       {{ cdn_edge_tls_protocols }};
+    ssl_ciphers         {{ cdn_edge_tls_ciphers }};
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age={{ cdn_edge_hsts_max_age }}; includeSubDomains" always;
+
+    location / {
+        proxy_pass http://{{ item.name }}_pool;
+    }
+}
+
+server {
+{% if listen_v4 %}
+    listen {{ listen_v4 }}:80;
+{% else %}
+    listen 80;
+{% endif %}
+{% if listen_v6 %}
+    listen [{{ listen_v6 }}]:80;
+{% endif %}
+    server_name {{ item.server_names | join(' ') }};
+    return 301 https://$host$request_uri;
+}
+{% else %}
+server {
+{% if listen_v4 %}
+    listen {{ listen_v4 }}:80;
+{% else %}
+    listen 80;
+{% endif %}
+{% if listen_v6 %}
+    listen [{{ listen_v6 }}]:80;
+{% endif %}
+
+    server_name {{ item.server_names | join(' ') }};
+
+    location / {
+        proxy_pass http://{{ item.name }}_pool;
+    }
+}
+{% endif %}

@@ -1,0 +1,69 @@
+---
+# === varnish ===================================================
+cdn_varnish_listen_addr:    "0.0.0.0"
+cdn_varnish_listen_port:    6081
+cdn_varnish_admin_addr:     "127.0.0.1"
+cdn_varnish_admin_port:     6082
+cdn_varnish_storage:        "malloc,256m"   # primary use is L7, not cache
+cdn_varnish_extra_args:     ""
+
+# Backends declared in VCL. Two flavors:
+#   - object_store_backends: external HTTP origins (Isilon, MinIO, …)
+#   - local_nginx (always present): 127.0.0.1:<port>, serves the content path
+cdn_varnish_object_store_backends: []
+#   - name: isilon
+#     host: "isilon.internal.example.com"
+#     port: 80
+#     probe_url: "/_health"
+#   - name: minio
+#     host: "minio.internal.example.com"
+#     port: 9000
+
+# Routing rules — first match wins. If none match, falls through to
+# round-robin over object_store_backends; if that's empty, local_nginx.
+cdn_varnish_routes: []
+#   - { match_host: "media.example.com",           backend: local_nginx }
+#   - { match_host_in: ["api.example.com"],        backend: minio       }
+#   - { match_path_prefix: "/static/",             backend: local_nginx }
+
+# L7 manipulation — applied in vcl_backend_response.
+cdn_varnish_set_response_headers: []
+#   - { name: "X-CDN", value: "edge-1" }
+cdn_varnish_unset_response_headers:
+  - "X-Powered-By"
+  - "Server"
+
+# === local nginx (Varnish-side, NFS-backed) ====================
+cdn_varnish_local_nginx_port: 8080
+cdn_varnish_content_path:     /srv/cdn-content
+
+# === NFS ========================================================
+# `none`   — content_path is just a local directory
+# `server` — export content_path to other Varnish nodes (or further hops)
+# `client` — mount content_path from another NFS server
+cdn_varnish_nfs_role: none
+
+# When role=server: who can mount, and with what options.
+cdn_varnish_nfs_clients: []
+#   - { network: "10.0.20.0/24", options: "ro,sync,no_subtree_check" }
+
+# When role=client:
+cdn_varnish_nfs_remote_host:   ""
+cdn_varnish_nfs_remote_export: ""
+cdn_varnish_nfs_mount_options: "ro,nfsvers=4.2,hard,intr,nodev,nosuid,noexec"
+
+# === firewall ==================================================
+# Varnish accepts traffic only from edges (over the internal subnet)
+# plus ssh via wireguard. Plus 2049/tcp if NFS server.
+firewall_allow_tcp: "{{ _cdn_varnish_base_tcp + _cdn_varnish_nfs_tcp }}"
+_cdn_varnish_base_tcp:
+  - { port: 22, in: wg0 }
+  - { port: "{{ cdn_varnish_listen_port }}", source: "{{ cdn_internal_subnet }}" }
+_cdn_varnish_nfs_tcp: >-
+  {{ [{'port': 2049, 'source': cdn_internal_subnet}]
+     if cdn_varnish_nfs_role == 'server' else [] }}
+
+firewall_allow_udp: "{{ _cdn_varnish_nfs_udp }}"
+_cdn_varnish_nfs_udp: >-
+  {{ [{'port': 2049, 'source': cdn_internal_subnet}]
+     if cdn_varnish_nfs_role == 'server' else [] }}

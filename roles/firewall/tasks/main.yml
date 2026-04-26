@@ -1,0 +1,65 @@
+---
+- name: Install iptables (with openrc subpkg — both v4 and v6 services live in iptables-openrc)
+  community.general.apk:
+    name:
+      - iptables
+      - ip6tables
+      - iptables-openrc
+    state: present
+
+- name: Ensure /etc/iptables exists
+  ansible.builtin.file:
+    path: /etc/iptables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# Stop Alpine's iptables init from clobbering our file on rc-service stop.
+- name: Disable SAVE_ON_STOP for iptables
+  ansible.builtin.lineinfile:
+    path: /etc/conf.d/iptables
+    regexp: '^SAVE_ON_STOP='
+    line: 'SAVE_ON_STOP="no"'
+    create: true
+    mode: "0644"
+
+- name: Disable SAVE_ON_STOP for ip6tables
+  ansible.builtin.lineinfile:
+    path: /etc/conf.d/ip6tables
+    regexp: '^SAVE_ON_STOP='
+    line: 'SAVE_ON_STOP="no"'
+    create: true
+    mode: "0644"
+
+- name: Render iptables rules
+  ansible.builtin.template:
+    src: iptables.rules.j2
+    dest: /etc/iptables/rules-save
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restore iptables
+
+- name: Render ip6tables rules
+  ansible.builtin.template:
+    src: ip6tables.rules.j2
+    dest: /etc/iptables/rules6-save
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restore ip6tables
+
+- name: Enable iptables service
+  ansible.builtin.service:
+    name: iptables
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Enable ip6tables service
+  ansible.builtin.service:
+    name: ip6tables
+    enabled: true
+    runlevel: default
+    state: started

@@ -1,0 +1,11 @@
+GRUB_DISTRIBUTOR="Alpine"
+GRUB_TIMEOUT={{ grub_timeout }}
+GRUB_DISABLE_SUBMENU=y
+GRUB_DISABLE_RECOVERY=true
+GRUB_PRELOAD_MODULES="luks cryptodisk part_gpt"
+GRUB_ENABLE_CRYPTODISK=y
+GRUB_DISABLE_LINUX_PARTUUID=true
+GRUB_DISABLE_LINUX_UUID=true
+GRUB_DEVICE=ZFS={{ zfs_pool }}/ROOT/alpine
+GRUB_FS=noneofyourbusiness
+GRUB_CMDLINE_LINUX_DEFAULT="{{ grub_cmdline_default }}"

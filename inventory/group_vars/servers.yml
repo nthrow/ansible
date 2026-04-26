@@ -1,0 +1,11 @@
+---
+# Servers: no /home dataset by default. Add /var or /srv datasets per role.
+zfs_datasets:
+  - { name: "{{ zfs_pool }}/ROOT",        mountpoint: none,   canmount: off }
+  - { name: "{{ zfs_pool }}/ROOT/alpine", mountpoint: legacy, canmount: off }
+
+# Servers usually need 80/443 (HTTP), and stricter sshd settings.
+firewall_allow_tcp:
+  - 22
+  - 80
+  - 443

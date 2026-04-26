@@ -1,0 +1,20 @@
+---
+- name: reload prometheus
+  ansible.builtin.command: pkill -HUP prometheus
+  changed_when: false
+  failed_when: false
+
+- name: restart prometheus
+  ansible.builtin.service:
+    name: prometheus
+    state: restarted
+
+- name: restart loki
+  ansible.builtin.service:
+    name: loki
+    state: restarted
+
+- name: restart grafana
+  ansible.builtin.service:
+    name: grafana
+    state: restarted

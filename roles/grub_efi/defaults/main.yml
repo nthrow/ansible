@@ -1,0 +1,9 @@
+---
+grub_timeout: 2
+grub_cmdline_default: " ro"
+grub_efi_directory: /efi
+grub_boot_directory: /boot
+# Whether to move the bootloader to the firmware fallback path so we don't
+# rely on NVRAM. Useful on systems with a clean firmware (or where you want
+# to be able to swap motherboards / re-enroll quickly).
+grub_use_fallback_path: true

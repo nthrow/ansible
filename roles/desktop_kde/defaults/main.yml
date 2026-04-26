@@ -1,0 +1,116 @@
+---
+sddm_theme: breeze
+sddm_cursor_theme: breeze_cursors
+
+# KDE Plasma packages, fonts, X11. The dev stack lives in a sibling role
+# (`dev_stack`) so a server playbook could pull just `desktop_kde` for a
+# kiosk-style host without dragging in the toolchain.
+kde_packages:
+  - alacritty
+  - apk-polkit-rs
+  - ark
+  - audiocd-kio
+  - bluedevil
+  - breeze
+  - breeze-gtk
+  - breeze-icons
+  - dconf-editor
+  - dolphin
+  - elogind
+  - elogind-openrc
+  - eudev
+  - ffmpegthumbs
+  - firefox
+  - fwupd
+  - fwupd-efi
+  - gparted
+  - gtksourceview4
+  - gwenview
+  - kate
+  - kde-cli-tools
+  - kde-gtk-config
+  - kdenetwork-filesharing
+  - kdeplasma-addons
+  - kdialog
+  - kfind
+  - kinfocenter
+  - kio-extras
+  - kio-fuse
+  - kmenuedit
+  - kolourpaint
+  - konsole
+  - kscreen
+  - ksshaskpass
+  - kunifiedpush
+  - kwallet-pam
+  - kwrite
+  - libapk2
+  - libnm
+  - libqrencode
+  - maliit-keyboard
+  - mesa-va-gallium
+  - mesa-vulkan-ati
+  - mpv
+  - okular
+  - ovmf
+  - pinentry
+  - pinentry-qt
+  - plasma-browser-integration
+  - plasma-desktop
+  - plasma-disks
+  - plasma-firewall
+  - plasma-nm
+  - plasma-pa
+  - plasma-systemmonitor
+  - plasma-thunderbolt
+  - plasma-vault
+  - plasma-workspace-wallpapers
+  - polkit-elogind
+  - polkit-kde-agent-1
+  - power-profiles-provider
+  - powerdevil
+  - powertop
+  - print-manager
+  - sddm
+  - sddm-openrc
+  - sddm-breeze
+  - sddm-kcm
+  - spectacle
+  - systemsettings
+  - tlp
+  - tlp-openrc
+  - tlp-rdw
+  - totem
+  - udisks2
+  - vulkan-loader
+  - vulkan-tools
+  - xclip
+  - xdg-desktop-portal
+  - xdg-desktop-portal-kde
+  - xdg-user-dirs
+  - xdg-utils
+  - xf86-input-libinput
+  - xhost
+  - xinit
+  - xorg-server
+  - acpid
+  - acpid-openrc
+  - cgroups
+  - udisks2-openrc
+
+font_packages:
+  - font-awesome
+  - font-dejavu
+  - font-inconsolata
+  - font-liberation
+  - font-noto
+  - font-noto-cjk
+  - font-noto-emoji
+  - font-noto-extra
+  - font-opensans
+  - font-terminus
+  - font-ubuntu
+  - font-ubuntu-mono-nerd
+  - font-ubuntu-nerd
+  - msttcorefonts-installer
+  - ocean-sound-theme

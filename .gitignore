@@ -1,0 +1,14 @@
+# ansible runtime artifacts
+.ansible/
+*.retry
+.vault_pass
+*.vault.yml.bak
+
+# editor/OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# anything matching a vault password file convention
+vault-password*

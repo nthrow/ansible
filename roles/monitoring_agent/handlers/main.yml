@@ -1,0 +1,10 @@
+---
+- name: restart node-exporter
+  ansible.builtin.service:
+    name: node-exporter
+    state: restarted
+
+- name: restart alloy
+  ansible.builtin.service:
+    name: alloy
+    state: restarted

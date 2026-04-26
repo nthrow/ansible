@@ -1,0 +1,9 @@
+---
+secureboot_dir: /boot/secureboot
+secureboot_cn: "Alpine SB CA"
+# Kernel flavors to install a signing hook for. Each entry produces
+# /etc/kernel-hooks.d/sbsign-<flavor>.
+secureboot_kernel_flavors:
+  - lts
+# The bootloader we sign every time it changes.
+secureboot_bootloader: /efi/EFI/boot/bootx64.efi

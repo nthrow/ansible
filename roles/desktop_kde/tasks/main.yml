@@ -1,0 +1,42 @@
+---
+- name: Install KDE Plasma
+  community.general.apk:
+    name: "{{ kde_packages }}"
+    state: present
+
+- name: Install fonts
+  community.general.apk:
+    name: "{{ font_packages }}"
+    state: present
+
+- name: SDDM theme
+  ansible.builtin.template:
+    src: sddm.conf.j2
+    dest: /etc/sddm.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stat desktop-related init scripts
+  ansible.builtin.stat:
+    path: "/etc/init.d/{{ item }}"
+  loop: [sddm, elogind, acpid, udisks2, cgroups]
+  register: _desktop_inits
+
+- name: Enable desktop-related services (default runlevel)
+  ansible.builtin.service:
+    name: "{{ item.item }}"
+    enabled: true
+    runlevel: default
+    state: started
+  loop: "{{ _desktop_inits.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+
+- name: Enable tlp at boot
+  ansible.builtin.service:
+    name: tlp
+    enabled: true
+    runlevel: boot
+    state: started

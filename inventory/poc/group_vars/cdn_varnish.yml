@@ -1,0 +1,22 @@
+---
+# Single object-store backend pointing at the PoC origin VM. No NFS,
+# no routes — fallthrough sends everything to the origin. The L7
+# manipulation in `set_response_headers` is what proves varnish is
+# in the chain (curl -I should show X-CDN: poc).
+
+cdn_varnish_object_store_backends:
+  - name: origin
+    host: "{{ hostvars['origin'].ansible_host }}"
+    port: 80
+    probe_url: "/healthz"
+
+cdn_varnish_routes: []
+
+cdn_varnish_set_response_headers:
+  - { name: "X-CDN",  value: "poc" }
+  - { name: "X-Tier", value: "varnish" }
+
+cdn_varnish_unset_response_headers:
+  - "Server"
+
+cdn_varnish_nfs_role: none

@@ -1,0 +1,28 @@
+---
+- name: regen grub.cfg
+  ansible.builtin.command: grub-mkconfig -o /boot/grub/grub.cfg
+  changed_when: false
+
+# Workaround for https://wejn.org/2021/09/fixing-grub-verification-requested-nobody-cares/
+# We patch the literal string in the grub binary. `replace:` does an
+# in-place edit, no atomic rename — fine for this case.
+- name: patch SecureBoot string
+  ansible.builtin.replace:
+    path: "{{ grub_efi_directory }}/EFI/alpine/grubx64.efi"
+    regexp: SecureBoot
+    replace: SecureB00t
+  when: grub_use_fallback_path
+  failed_when: false   # file may already be moved to /EFI/boot
+
+- name: move grub to fallback path
+  ansible.builtin.shell: |
+    set -e
+    mkdir -p {{ grub_efi_directory }}/EFI/boot
+    if [ -f {{ grub_efi_directory }}/EFI/alpine/grubx64.efi ]; then
+      mv {{ grub_efi_directory }}/EFI/alpine/grubx64.efi \
+         {{ grub_efi_directory }}/EFI/boot/bootx64.efi
+      rmdir {{ grub_efi_directory }}/EFI/alpine 2>/dev/null || true
+    fi
+  args:
+    creates: "{{ grub_efi_directory }}/EFI/boot/bootx64.efi"
+  when: grub_use_fallback_path

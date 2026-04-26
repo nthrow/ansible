@@ -1,0 +1,58 @@
+user {{ cdn_edge_nginx_user }};
+worker_processes {{ cdn_edge_nginx_worker_processes }};
+error_log /var/log/nginx/error.log warn;
+pid /run/nginx.pid;
+
+events {
+    worker_connections {{ cdn_edge_nginx_worker_connections }};
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for" '
+                      'rt=$request_time urt=$upstream_response_time';
+    access_log /var/log/nginx/access.log main;
+
+    sendfile        on;
+    tcp_nopush      on;
+    tcp_nodelay     on;
+    keepalive_timeout  65;
+    server_tokens   off;
+
+    proxy_http_version 1.1;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Real-IP         $remote_addr;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_set_header   Connection        "";
+    proxy_buffering    on;
+
+    # Per-zone upstream pools.
+{% for z in cdn_edge_zones %}
+    upstream {{ z.name }}_pool {
+{% for s in z.upstream_servers %}
+        server {{ s }} max_fails=3 fail_timeout=10s;
+{% endfor %}
+        keepalive {{ z.keepalive | default(32) }};
+    }
+{% endfor %}
+
+    # Local stub_status for nginx-prometheus-exporter.
+    server {
+        listen 127.0.0.1:8081;
+        location /stub_status {
+            stub_status;
+            access_log off;
+            allow 127.0.0.1;
+            deny all;
+        }
+    }
+
+    include /etc/nginx/http.d/*.conf;
+}

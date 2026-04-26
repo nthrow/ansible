@@ -1,0 +1,11 @@
+---
+# Minimal edge: no BIRD, no anycast, no TLS. Listens on the VM's IP and
+# proxies everything to varnish.
+cdn_edge_anycast_enabled: false
+
+cdn_edge_zones:
+  - name: poc
+    server_names: ["_"]   # match any Host
+    upstream_servers:
+      - "{{ hostvars['varnish'].ansible_host }}:6081"
+    keepalive: 16

@@ -1,0 +1,6 @@
+---
+# Per-host overrides. This is an example; replace `desktop1` with your
+# actual hostname (and rename this file to host_vars/<hostname>.yml).
+hostname: desktop1
+timezone: UTC
+keymap: us us

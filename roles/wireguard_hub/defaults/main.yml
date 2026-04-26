@@ -1,0 +1,36 @@
+---
+# Hub-and-spoke WireGuard server defaults.
+
+wireguard_interface:           wg0
+wireguard_port:                51820
+wireguard_external_interface:  eth0   # the WAN-side interface
+
+# Hub addresses (CIDR includes the prefix the hub itself owns).
+wireguard_subnet_v4:           10.0.0.0/24
+wireguard_server_address_v4:   10.0.0.1/24
+# Set to non-empty values to enable IPv6 inside the tunnel.
+wireguard_subnet_v6:           ""
+wireguard_server_address_v6:   ""
+
+# Where the server's private key lives. Generated on first run if missing.
+wireguard_privkey_path:        /etc/wireguard/{{ wireguard_interface }}.key
+wireguard_pubkey_path:         /etc/wireguard/{{ wireguard_interface }}.pub
+
+# Peers. Each item:
+#   - name:        human label (used as a config comment + facts key)
+#     public_key:  client's wg pubkey
+#     allowed_ips: list of CIDRs the hub will route TO this peer
+#                  (typically just the peer's tunnel /32 + /128)
+#     preshared_key: optional, recommended (generate per-peer)
+#     persistent_keepalive: optional, e.g. 25 for NAT'd peers
+wireguard_peers: []
+
+# Allow tunnel clients to use the hub as an internet exit (MASQUERADE
+# wg-subnet → external_interface).
+wireguard_enable_exit: false
+
+# DNS the hub advertises in generated client configs (informational —
+# not enforced by the server).
+wireguard_client_dns:
+  - 1.1.1.1
+  - 9.9.9.9

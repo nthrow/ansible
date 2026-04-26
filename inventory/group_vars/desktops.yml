@@ -1,0 +1,56 @@
+---
+# Bare-metal: ansible manages the kernel + firmware package set so apk
+# upgrades the kernel along with everything else.
+kernel_packages:
+  - linux-lts
+  - linux-firmware-other
+  - kernel-hooks
+
+# Desktop user gets fstab + /opt bind-mount management.
+users_manage_fstab: true
+
+# Desktop hosts add a /home dataset with noexec, plus bind-mount escape hatches.
+zfs_datasets: "{{ zfs_datasets_base + zfs_datasets_desktop }}"
+zfs_datasets_base:
+  - { name: "{{ zfs_pool }}/ROOT",        mountpoint: none,   canmount: off }
+  - { name: "{{ zfs_pool }}/ROOT/alpine", mountpoint: legacy, canmount: off }
+zfs_datasets_desktop:
+  - { name: "{{ zfs_pool }}/ROOT/home",   mountpoint: legacy, canmount: on  }
+
+# Desktop user.
+desktop_user: alice
+desktop_user_shell: /usr/bin/fish
+desktop_user_groups:
+  - lp
+  - wheel
+  - audio
+  - video
+  - netdev
+  - plugdev
+  - docker
+  - libvirt
+  - gatekeeper
+
+# Bind-mounts: noexec /home with writable subdirs backed by /opt/<user>/...
+home_bind_mounts:
+  - bin
+  - projects
+  - .cargo
+  - .rustup
+  - .local/share/flatpak
+  - .var
+
+# KDE/desktop firewall: permit local mDNS + KDE Connect on the LAN if desired.
+firewall_allow_tcp:
+  - 22
+firewall_allow_udp: []
+
+# Secure Boot CA Common Name.
+secureboot_cn: "Example SB CA"
+
+# Flatpak remotes installed system-wide. Per-user remotes are listed
+# separately and added as the desktop user.
+flatpak_system_remotes:
+  - { name: flathub,      url: "https://dl.flathub.org/repo/flathub.flatpakrepo" }
+  - { name: flathub-beta, url: "https://dl.flathub.org/beta-repo/flathub-beta.flatpakrepo" }
+flatpak_user_remotes: []  # add per-user remote URLs here if you want

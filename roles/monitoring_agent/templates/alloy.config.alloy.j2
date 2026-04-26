@@ -1,0 +1,26 @@
+// /etc/alloy/config.alloy — Grafana Alloy config (Flow syntax)
+// Tails the configured log files and ships to Loki.
+
+local.file_match "tailed" {
+  path_targets = [
+{% for entry in alloy_log_paths %}
+    {
+      __path__ = "{{ entry.path }}",
+      job      = "{{ entry.job }}",
+      host     = "{{ inventory_hostname }}",
+      group    = "{{ group_names | join(',') }}",
+    },
+{% endfor %}
+  ]
+}
+
+loki.source.file "tailed" {
+  targets    = local.file_match.tailed.targets
+  forward_to = [loki.write.endpoint.receiver]
+}
+
+loki.write "endpoint" {
+  endpoint {
+    url = "{{ loki_push_url }}"
+  }
+}

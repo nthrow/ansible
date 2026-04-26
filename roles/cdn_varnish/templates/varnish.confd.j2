@@ -1,0 +1,9 @@
+{# /etc/conf.d/varnishd — args passed to varnishd by the openrc init.
+   Alpine's init's checkconfig() uses ${VARNISHD} without a :- default,
+   so we set it explicitly here to avoid an empty-expansion footgun. #}
+VARNISHD=/usr/sbin/varnishd
+CONFIGFILE=/etc/varnish/default.vcl
+VARNISHD_OPTS="-a {{ cdn_varnish_listen_addr }}:{{ cdn_varnish_listen_port }} \
+ -T {{ cdn_varnish_admin_addr }}:{{ cdn_varnish_admin_port }} \
+ -s {{ cdn_varnish_storage }} \
+ {{ cdn_varnish_extra_args }}"

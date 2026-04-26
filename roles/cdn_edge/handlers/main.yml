@@ -1,0 +1,18 @@
+---
+- name: bind anycast vips
+  ansible.builtin.command: /etc/local.d/anycast-vips.start
+  changed_when: false
+
+- name: reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: reload bird
+  ansible.builtin.command: /usr/sbin/birdc configure
+  changed_when: false
+
+- name: restart nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    state: restarted

@@ -1,0 +1,39 @@
+---
+# Default policies (applied to filter table). DROP for INPUT/FORWARD,
+# ACCEPT for OUTPUT — locking OUTPUT down breaks pkg installs and is
+# rarely worth it on a managed host. Override per-host if you want
+# strict OUTPUT.
+firewall_input_default:   DROP
+firewall_forward_default: DROP
+firewall_output_default:  ACCEPT
+
+# Hardening (INPUT chain).
+firewall_drop_invalid:    true
+firewall_drop_nonsyn_new: true
+firewall_drop_xmas_null:  true
+firewall_drop_fragments_v4: true
+firewall_drop_fragments_v6: false   # v6 fragmentation works differently
+
+# Allow loopback. Reject spoofed loopback source from non-lo iface.
+firewall_loopback_protect: true
+
+# ICMP: respond to ping by default (echo on v4; full ICMPv6 on v6).
+firewall_allow_icmp: true
+
+# Allow rules.
+#   short form:   - 22
+#   dict form:    - { port: 22, in: wg0, source: 10.0.0.0/24 }
+firewall_allow_tcp:
+  - 22
+firewall_allow_udp: []
+
+# FORWARD chain rules. Each item: { in: <iface>, out: <iface>,
+#                                    source: <cidr>?, dest: <cidr>? }
+firewall_forward_rules: []
+
+# NAT POSTROUTING (MASQUERADE). Each item: { src: <cidr>, out: <iface> }
+firewall_nat_masquerade: []
+
+# Logging: rate-limited drop logs at end of each chain.
+firewall_log_drops: true
+firewall_log_rate:  3/min

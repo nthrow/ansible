@@ -1,0 +1,32 @@
+---
+# === Daemon ====================================================
+docker_data_root:        /var/lib/docker
+docker_log_driver:       json-file
+docker_log_max_size:     "10m"
+docker_log_max_files:    "5"
+docker_userland_proxy:   false
+docker_live_restore:     true
+
+# Extra fields merged into /etc/docker/daemon.json. Use this for any
+# config we don't have a first-class var for (mirrors, dns, etc.).
+docker_daemon_extra: {}
+
+# === Users =====================================================
+# If set, this existing user gets added to the docker group. Leave
+# empty to skip (typical for headless homelab boxes).
+docker_user: ""
+
+# === Optional tooling =========================================
+# e.g. ["ctop", "lazydocker"] — only install if you want them.
+docker_extra_packages: []
+
+# === Swarm =====================================================
+# none      — single-box, no swarm
+# manager   — initialize (first node) or join (subsequent) as manager
+# worker    — join as worker
+docker_swarm_role: none
+
+# Interface to advertise on for swarm. The homelab norm is wg0.
+# Auto-derived from this interface unless docker_advertise_addr is set.
+docker_advertise_iface: wg0
+docker_advertise_addr:  ""

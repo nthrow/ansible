@@ -1,0 +1,24 @@
+---
+- name: Alpine desktop
+  hosts: desktops
+  gather_facts: true
+  become: false   # we already log in as root via bootstrap-installed key
+  roles:
+    # Cross-applicable (server + desktop):
+    - common
+    - zfs
+    - dmcrypt
+    - sshd
+    - firewall
+    - grub_efi
+    - secureboot
+    - users
+
+    # Desktop-only:
+    - networking_desktop
+    - desktop_kde
+    - dev_stack
+    - flatpak
+
+    # Observability agent (last so daemons it talks to are up).
+    - monitoring_agent

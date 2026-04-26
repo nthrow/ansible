@@ -1,0 +1,36 @@
+---
+# The pool itself is created by bootstrap.sh — this role only ensures
+# datasets/properties/services match the desired state.
+
+- name: Install ZFS userland
+  community.general.apk:
+    name: zfs
+    state: present
+
+- name: Ensure zfs-import is in sysinit
+  ansible.builtin.service:
+    name: zfs-import
+    enabled: true
+    runlevel: sysinit
+
+- name: Ensure zfs-mount is in sysinit
+  ansible.builtin.service:
+    name: zfs-mount
+    enabled: true
+    runlevel: sysinit
+
+- name: Pool encryption keylocation points to the on-disk keyfile
+  ansible.builtin.command: >
+    zfs set keylocation=file:///crypto_keyfile.bin {{ zfs_pool }}
+  changed_when: false
+
+- name: Ensure ZFS datasets exist with desired properties
+  community.general.zfs:
+    name: "{{ item.name }}"
+    state: present
+    extra_zfs_properties:
+      mountpoint: "{{ item.mountpoint }}"
+      canmount: "{{ item.canmount }}"
+  loop: "{{ zfs_datasets }}"
+  loop_control:
+    label: "{{ item.name }}"

@@ -1,0 +1,19 @@
+---
+# Homelab docker hosts. Single-box and swarm modes share one role; the
+# swarm bring-up is gated on `docker_swarm_role` per host (set via the
+# group_vars/docker_{standalone,managers,workers}.yml files).
+#
+# Assumes hosts are on the wireguard network. ssh + swarm ports are
+# only opened on wg0.
+#
+#   ansible-playbook -i inventory/hosts.yml playbooks/docker.yml
+#
+- name: Docker hosts
+  hosts: docker_hosts
+  gather_facts: true
+  roles:
+    - common
+    - sshd
+    - firewall
+    - docker_host
+    - monitoring_agent

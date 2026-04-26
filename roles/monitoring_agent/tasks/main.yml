@@ -1,0 +1,44 @@
+---
+- name: Install node_exporter + alloy (with openrc subpkgs)
+  community.general.apk:
+    name:
+      - prometheus-node-exporter
+      - prometheus-node-exporter-openrc
+      - alloy
+      - alloy-openrc
+    state: present
+
+- name: Configure node_exporter listen address
+  ansible.builtin.template:
+    src: node-exporter.confd.j2
+    dest: /etc/conf.d/node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart node-exporter
+
+- name: Enable node_exporter
+  ansible.builtin.service:
+    name: node-exporter
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- alloy (log shipper) ---------------------------------------
+- name: Render alloy config
+  ansible.builtin.template:
+    src: alloy.config.alloy.j2
+    dest: "{{ alloy_config }}"
+    owner: alloy
+    group: alloy
+    mode: "0644"
+  when: loki_push_url | length > 0
+  notify: restart alloy
+
+- name: Enable alloy
+  ansible.builtin.service:
+    name: alloy
+    enabled: true
+    runlevel: default
+    state: started
+  when: loki_push_url | length > 0

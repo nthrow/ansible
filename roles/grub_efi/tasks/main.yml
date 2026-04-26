@@ -1,0 +1,49 @@
+---
+- name: Install GRUB
+  community.general.apk:
+    name:
+      - grub
+      - grub-efi
+      - efibootmgr
+    state: present
+
+- name: Render /etc/default/grub
+  ansible.builtin.template:
+    src: grub.j2
+    dest: /etc/default/grub
+    owner: root
+    group: root
+    mode: "0644"
+  notify: regen grub.cfg
+
+# /boot + /efi are `noauto` in fstab and mounted later by /etc/local.d.
+# Using `command: mount <path>` lets fstab be the single source of truth
+# for src/fstype/options — ansible.posix.mount would force duplication.
+- name: Ensure /boot is mounted (it may not be at default runlevel time)
+  ansible.builtin.command: mount /boot   # noqa: command-instead-of-module
+  register: mount_boot
+  changed_when: "'already mounted' not in mount_boot.stderr | default('')"
+  failed_when:
+    - mount_boot.rc != 0
+    - "'already mounted' not in mount_boot.stderr | default('')"
+
+- name: Ensure /efi is mounted
+  ansible.builtin.command: mount /efi   # noqa: command-instead-of-module
+  register: mount_efi
+  changed_when: "'already mounted' not in mount_efi.stderr | default('')"
+  failed_when:
+    - mount_efi.rc != 0
+    - "'already mounted' not in mount_efi.stderr | default('')"
+
+- name: Run grub-install (idempotent enough)
+  ansible.builtin.command: >
+    grub-install --target=x86_64-efi
+                 --efi-directory={{ grub_efi_directory }}
+                 --boot-directory={{ grub_boot_directory }}
+  changed_when: false
+  notify:
+    - patch SecureBoot string
+    - move grub to fallback path
+
+- name: Force grub.cfg regeneration on first run
+  ansible.builtin.meta: flush_handlers

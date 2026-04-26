@@ -1,0 +1,10 @@
+#!/bin/sh
+CERT={{ secureboot_dir }}/sb.crt
+KEY={{ secureboot_dir }}/sb.key
+KERNEL=/boot/vmlinuz-{{ item }}
+sbverify --cert $CERT $KERNEL >/dev/null 2>&1 && exit 0
+echo "+ signing $KERNEL"
+set -e
+sbsign --output $KERNEL.signed --key $KEY --cert $CERT $KERNEL
+sbverify --cert $CERT $KERNEL.signed
+mv -f $KERNEL.signed $KERNEL

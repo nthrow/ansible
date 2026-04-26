@@ -1,0 +1,135 @@
+---
+- name: Install nginx
+  community.general.apk:
+    name:
+      - nginx
+      - nginx-openrc
+    state: present
+
+- name: Install bird
+  community.general.apk:
+    name:
+      - bird
+      - bird-openrc
+    state: present
+  when: cdn_edge_anycast_enabled
+
+- name: Bind anycast VIPs to lo at boot
+  ansible.builtin.template:
+    src: anycast-vips.start.j2
+    dest: /etc/local.d/anycast-vips.start
+    owner: root
+    group: root
+    mode: "0755"
+  when: cdn_edge_anycast_enabled
+  notify: bind anycast vips
+
+- name: Ensure local service is enabled
+  ansible.builtin.service:
+    name: local
+    enabled: true
+    runlevel: default
+    state: started
+  when: cdn_edge_anycast_enabled
+
+# --- nginx -----------------------------------------------------
+- name: Drop default nginx confs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/nginx/http.d/default.conf
+    - /etc/nginx/conf.d/default.conf
+
+- name: Render main nginx.conf
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/nginx -t -c %s"
+  notify: reload nginx
+
+- name: Render per-zone server blocks
+  ansible.builtin.template:
+    src: zone.conf.j2
+    dest: "/etc/nginx/http.d/zone-{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ cdn_edge_zones }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: reload nginx
+
+- name: Enable nginx
+  ansible.builtin.service:
+    name: nginx
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- nginx exporter (binary fetch — not in alpine apk repos) ---
+- name: Fetch nginx-prometheus-exporter tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/nginx/nginx-prometheus-exporter/releases/download/v{{ nginx_exporter_version }}/nginx-prometheus-exporter_{{ nginx_exporter_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract nginx-prometheus-exporter binary   # noqa: command-instead-of-module
+  ansible.builtin.command: >
+    tar -xzf /tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz
+        -C /usr/local/bin nginx-prometheus-exporter
+  args:
+    creates: /usr/local/bin/nginx-prometheus-exporter
+
+- name: Drop nginx-exporter openrc init
+  ansible.builtin.copy:
+    dest: /etc/init.d/nginx-exporter
+    mode: "0755"
+    content: |
+      #!/sbin/openrc-run
+      command="/usr/local/bin/nginx-prometheus-exporter"
+      command_args="$ARGS"
+      command_background=yes
+      pidfile="/run/${RC_SVCNAME}.pid"
+      depend() { need net; after nginx; }
+
+- name: Configure nginx-exporter args
+  ansible.builtin.copy:
+    dest: /etc/conf.d/nginx-exporter
+    content: |
+      ARGS="--nginx.scrape-uri=http://127.0.0.1:8081/stub_status \
+            --web.listen-address={{ ansible_facts[monitoring_bind_iface | default('wg0')].ipv4.address | default('127.0.0.1') }}:9113"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart nginx exporter
+
+- name: Enable nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- bird ------------------------------------------------------
+- name: Render bird.conf
+  ansible.builtin.template:
+    src: bird.conf.j2
+    dest: /etc/bird/bird.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/bird -p -c %s"
+  when: cdn_edge_anycast_enabled
+  notify: reload bird
+
+- name: Enable bird
+  ansible.builtin.service:
+    name: bird
+    enabled: true
+    runlevel: default
+    state: started
+  when: cdn_edge_anycast_enabled

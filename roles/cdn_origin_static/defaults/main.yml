@@ -1,0 +1,6 @@
+---
+cdn_origin_listen_addr: "0.0.0.0"
+cdn_origin_listen_port: 80
+cdn_origin_root:        /srv/origin
+
+nginx_exporter_version: "1.5.0"

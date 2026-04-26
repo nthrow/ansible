@@ -1,0 +1,19 @@
+---
+# Lean overrides for the local PoC. The production inventory lives at
+# ../group_vars/all.yml; we don't inherit from it (separate inventory).
+
+ansible_user: root
+
+apk_repositories:
+  - http://dl-cdn.alpinelinux.org/alpine/edge/main
+  - http://dl-cdn.alpinelinux.org/alpine/edge/community
+
+# Just enough to run + introspect the chain.
+base_packages:
+  - curl
+  - openssh
+  - tcpdump
+  - htop
+
+timezone: UTC
+keymap: us us

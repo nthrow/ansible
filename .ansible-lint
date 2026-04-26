@@ -1,0 +1,34 @@
+---
+# Project-wide ansible-lint config. We disable rules that conflict with
+# deliberate style choices; everything else is on by default.
+
+exclude_paths:
+  - tests/
+  - docs/
+  - .github/
+
+skip_list:
+  # We use lowercase handler names by convention (`restart docker`, not
+  # `Restart docker`). Matches the rest of the openrc/Alpine ecosystem.
+  - name[casing]
+
+  # site.yml is purely import_playbook entries; there's no play to name.
+  - name[play]
+
+  # We use deliberate column alignment in inventory + role defaults
+  # for readability. yamllint with our config covers the structural
+  # checks; ansible-lint's `yaml` rule re-runs yamllint with strict
+  # defaults that don't match ours.
+  - yaml[colons]
+  - yaml[line-length]
+  - yaml[indentation]
+  - yaml[commas]
+
+  # Many of our cross-cutting variables (firewall_*, monitoring_bind_*,
+  # loki_push_url, etc.) are intentionally referenced by multiple roles.
+  # The `<role>_` prefix rule would force renaming these into role-
+  # specific copies. Tracked but not enforced.
+  - var-naming[no-role-prefix]
+
+# Don't fail the run on warnings; only hard violations bubble up.
+warn_list: []

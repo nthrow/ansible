@@ -1,0 +1,8 @@
+---
+- name: apply hostname
+  ansible.builtin.command: hostname -F /etc/hostname
+  changed_when: false
+
+- name: apk update
+  ansible.builtin.command: apk update
+  changed_when: false

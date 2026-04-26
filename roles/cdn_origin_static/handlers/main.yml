@@ -1,0 +1,10 @@
+---
+- name: reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: restart nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    state: restarted

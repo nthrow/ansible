@@ -1,0 +1,30 @@
+---
+- name: Install flatpak
+  community.general.apk:
+    name: flatpak
+    state: present
+
+- name: Add system flatpak remotes
+  community.general.flatpak_remote:
+    name: "{{ item.name }}"
+    flatpakrepo_url: "{{ item.url }}"
+    method: system
+    state: present
+  loop: "{{ flatpak_system_remotes | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Add per-user flatpak remotes (as desktop user)
+  community.general.flatpak_remote:
+    name: "{{ item.name }}"
+    flatpakrepo_url: "{{ item.url }}"
+    method: user
+    state: present
+  loop: "{{ flatpak_user_remotes | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  become: true
+  become_user: "{{ desktop_user }}"
+  when:
+    - desktop_user is defined
+    - flatpak_user_remotes | default([]) | length > 0

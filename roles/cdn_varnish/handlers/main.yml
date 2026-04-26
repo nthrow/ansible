@@ -1,0 +1,29 @@
+---
+- name: re-export nfs
+  ansible.builtin.command: exportfs -ra
+  changed_when: false
+
+- name: reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: reload varnish
+  ansible.builtin.command: >
+    varnishreload
+  changed_when: false
+
+- name: restart varnish
+  ansible.builtin.service:
+    name: varnishd
+    state: restarted
+
+- name: restart varnish exporter
+  ansible.builtin.service:
+    name: varnish-exporter
+    state: restarted
+
+- name: restart nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    state: restarted

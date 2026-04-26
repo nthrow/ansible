@@ -1,0 +1,3 @@
+{% for c in cdn_varnish_nfs_clients %}
+{{ cdn_varnish_content_path }} {{ c.network }}({{ c.options }})
+{% endfor %}

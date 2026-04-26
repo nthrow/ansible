@@ -1,0 +1,15 @@
+---
+# Shared by cdn_edges + cdn_varnish.
+
+# Internal subnet the CDN tiers use to talk to each other (edge → varnish,
+# varnish → object store). Used by firewall rules to scope source ACLs.
+# Distinct from the wireguard tunnel subnet to avoid overlap.
+cdn_internal_subnet: 10.10.0.0/16
+
+# All CDN hosts are managed via wireguard. SSH on the public iface is closed.
+firewall_allow_tcp:
+  - { port: 22, in: wg0 }
+
+# Drop fragments on v4 (strict on v4); leave v6 fragments alone.
+firewall_drop_fragments_v4: true
+firewall_drop_fragments_v6: false

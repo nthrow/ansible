@@ -1,0 +1,83 @@
+---
+- name: Install signing tooling
+  community.general.apk:
+    name:
+      - sbsigntool
+      - openssl
+      - kernel-hooks
+    state: present
+
+- name: Create secure-boot directory
+  ansible.builtin.file:
+    path: "{{ secureboot_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate signing key (idempotent)
+  community.crypto.openssl_privatekey:
+    path: "{{ secureboot_dir }}/sb.key"
+    type: RSA
+    size: 2048
+    mode: "0600"
+
+- name: Generate signing CSR (subject carrier)
+  community.crypto.openssl_csr:
+    path: "{{ secureboot_dir }}/sb.csr"
+    privatekey_path: "{{ secureboot_dir }}/sb.key"
+    common_name: "{{ secureboot_cn }}"
+    mode: "0644"
+
+- name: Generate self-signed cert (idempotent)
+  community.crypto.x509_certificate:
+    path: "{{ secureboot_dir }}/sb.crt"
+    privatekey_path: "{{ secureboot_dir }}/sb.key"
+    csr_path: "{{ secureboot_dir }}/sb.csr"
+    provider: selfsigned
+    selfsigned_not_after: "+36500d"
+    mode: "0644"
+
+- name: Convert cert to DER for firmware enrollment
+  ansible.builtin.command: >
+    openssl x509 -in {{ secureboot_dir }}/sb.crt
+                 -out {{ secureboot_dir }}/sb.cer -outform DER
+  args:
+    creates: "{{ secureboot_dir }}/sb.cer"
+
+- name: Stage CER on ESP for firmware enrollment
+  ansible.builtin.copy:
+    src: "{{ secureboot_dir }}/sb.cer"
+    dest: /efi/sb.cer
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Drop kernel-signing hooks
+  ansible.builtin.template:
+    src: sbsign-kernel.j2
+    dest: "/etc/kernel-hooks.d/sbsign-{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ secureboot_kernel_flavors }}"
+  loop_control:
+    loop_var: item
+
+- name: Sign kernels now
+  ansible.builtin.command: "/etc/kernel-hooks.d/sbsign-{{ item }}"
+  loop: "{{ secureboot_kernel_flavors }}"
+  changed_when: false
+
+- name: Sign bootloader
+  ansible.builtin.shell: |
+    set -e
+    if sbverify --cert {{ secureboot_dir }}/sb.crt {{ secureboot_bootloader }} >/dev/null 2>&1; then
+      exit 0
+    fi
+    sbsign --key {{ secureboot_dir }}/sb.key --cert {{ secureboot_dir }}/sb.crt \
+           {{ secureboot_bootloader }}
+    mv -f {{ secureboot_bootloader }}.signed {{ secureboot_bootloader }}
+  register: sb_sign
+  changed_when: sb_sign.rc == 0

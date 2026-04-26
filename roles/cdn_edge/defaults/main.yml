@@ -1,0 +1,26 @@
+---
+cdn_edge_nginx_user:               nginx
+cdn_edge_nginx_worker_processes:   auto
+cdn_edge_nginx_worker_connections: 8192
+
+# nginx-prometheus-exporter binary release version (apk doesn't ship it).
+nginx_exporter_version: "1.5.0"
+
+# Set to false for a minimal/PoC edge — skips BIRD install and VIP
+# binding entirely. nginx then listens on whatever address you put
+# in the zone's `listen_v4`/`listen_v6` (default 0.0.0.0/[::]).
+cdn_edge_anycast_enabled: true
+
+cdn_edge_local_asn: 65000
+cdn_edge_router_id: "{{ ansible_host | default(inventory_hostname) }}"
+cdn_edge_bgp_peers: []
+
+cdn_edge_anycast_v4: []
+cdn_edge_anycast_v6: []
+
+cdn_edge_zones: []
+
+# TLS hardening defaults applied to every zone server block.
+cdn_edge_tls_protocols: "TLSv1.2 TLSv1.3"
+cdn_edge_tls_ciphers:   "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+cdn_edge_hsts_max_age:  63072000

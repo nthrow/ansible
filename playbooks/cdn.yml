@@ -1,0 +1,31 @@
+---
+# CDN: edge gateways + varnish backends.
+#
+# Topology:
+#   client → edge VIP (eBGP-anycasted via BIRD, terminated at the switch)
+#         → edge nginx (TLS termination)
+#         → varnish backend (no VIP — flat upstream pool per zone)
+#         → varnish VCL: route to either
+#             a) external object store (Isilon/MinIO/etc), or
+#             b) local nginx on 127.0.0.1, serving from /srv/cdn-content
+#                (optionally NFS-mounted from another varnish or origin)
+
+- name: CDN edge gateways
+  hosts: cdn_edges
+  gather_facts: true
+  roles:
+    - common
+    - sshd
+    - firewall
+    - cdn_edge
+    - monitoring_agent
+
+- name: CDN varnish tier
+  hosts: cdn_varnish
+  gather_facts: true
+  roles:
+    - common
+    - sshd
+    - firewall
+    - cdn_varnish
+    - monitoring_agent

@@ -1,0 +1,13 @@
+{{ ({
+  "data-root":       docker_data_root,
+  "log-driver":      docker_log_driver,
+  "log-opts": {
+    "max-size":      docker_log_max_size,
+    "max-file":      docker_log_max_files
+  },
+  "live-restore":    docker_live_restore,
+  "userland-proxy":  docker_userland_proxy,
+  "metrics-addr":    (ansible_facts[docker_advertise_iface].ipv4.address
+                      | default('127.0.0.1')) ~ ':9323',
+  "experimental":    true
+} | combine(docker_daemon_extra)) | to_nice_json }}

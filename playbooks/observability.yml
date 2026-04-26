@@ -1,0 +1,20 @@
+---
+# The central Prometheus + Loki + Grafana stack. Run AFTER the rest of
+# the fleet has been provisioned at least once, so its
+# /etc/prometheus/prometheus.yml is templated against a populated
+# inventory.
+#
+#   ansible-playbook -i inventory/hosts.yml playbooks/observability.yml
+#
+# Then re-run the per-tier playbooks (or site.yml) so each host's
+# monitoring_agent picks up the loki_push_url and starts shipping logs.
+
+- name: Observability host
+  hosts: observability
+  gather_facts: true
+  roles:
+    - common
+    - sshd
+    - firewall
+    - monitoring_agent
+    - observability

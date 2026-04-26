@@ -1,0 +1,196 @@
+---
+- name: Install varnish + nginx + nfs-utils
+  community.general.apk:
+    name:
+      - varnish
+      - varnish-openrc
+      - nginx
+      - nginx-openrc
+      - nfs-utils
+      - nfs-utils-openrc
+    state: present
+
+- name: Ensure content path exists
+  ansible.builtin.file:
+    path: "{{ cdn_varnish_content_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# --- NFS server ------------------------------------------------
+- name: Render /etc/exports (NFS server)
+  ansible.builtin.template:
+    src: exports.j2
+    dest: /etc/exports
+    owner: root
+    group: root
+    mode: "0644"
+  when: cdn_varnish_nfs_role == 'server'
+  notify: re-export nfs
+
+- name: Enable NFS server services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    runlevel: default
+    state: started
+  loop:
+    - rpcbind
+    - nfs
+  when: cdn_varnish_nfs_role == 'server'
+
+# --- NFS client ------------------------------------------------
+- name: Add NFS client mount entry
+  ansible.posix.mount:
+    src: "{{ cdn_varnish_nfs_remote_host }}:{{ cdn_varnish_nfs_remote_export }}"
+    path: "{{ cdn_varnish_content_path }}"
+    fstype: nfs
+    opts: "{{ cdn_varnish_nfs_mount_options }}"
+    state: mounted
+  when: cdn_varnish_nfs_role == 'client'
+
+# --- local nginx (Varnish backend for static files) ------------
+- name: Drop default nginx confs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/nginx/http.d/default.conf
+    - /etc/nginx/conf.d/default.conf
+
+- name: Render local nginx.conf
+  ansible.builtin.template:
+    src: local-nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/nginx -t -c %s"
+  notify: reload nginx
+
+- name: Enable local nginx
+  ansible.builtin.service:
+    name: nginx
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- varnish ---------------------------------------------------
+- name: Render varnish openrc config
+  ansible.builtin.template:
+    src: varnish.confd.j2
+    dest: /etc/conf.d/varnishd
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart varnish
+
+# NOTE: skip `validate:` here — varnishd -C drops privileges and can't
+# read ansible's user-owned tmp file. The reload handler ('varnishreload')
+# fails fast on bad VCL without unloading the running config, which is
+# our safety net instead.
+- name: Render default.vcl
+  ansible.builtin.template:
+    src: default.vcl.j2
+    dest: /etc/varnish/default.vcl
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload varnish
+
+- name: Enable varnish
+  ansible.builtin.service:
+    name: varnishd
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- exporters (binary fetches — not in alpine apk repos) -----
+- name: Fetch varnish_exporter tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/jonnenauha/prometheus_varnish_exporter/releases/download/{{ varnish_exporter_version }}/prometheus_varnish_exporter-{{ varnish_exporter_version }}.linux-amd64.tar.gz"
+    dest: "/tmp/prometheus_varnish_exporter-{{ varnish_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract varnish_exporter   # noqa: command-instead-of-module
+  ansible.builtin.shell: |
+    cd /tmp
+    tar -xzf prometheus_varnish_exporter-{{ varnish_exporter_version }}.tar.gz
+    install -m 0755 \
+      prometheus_varnish_exporter-{{ varnish_exporter_version }}.linux-amd64/prometheus_varnish_exporter \
+      /usr/local/bin/prometheus_varnish_exporter
+  args:
+    creates: /usr/local/bin/prometheus_varnish_exporter
+
+- name: Drop varnish-exporter init
+  ansible.builtin.copy:
+    dest: /etc/init.d/varnish-exporter
+    mode: "0755"
+    content: |
+      #!/sbin/openrc-run
+      command="/usr/local/bin/prometheus_varnish_exporter"
+      command_args="$ARGS"
+      command_background=yes
+      pidfile="/run/${RC_SVCNAME}.pid"
+      depend() { need net; after varnishd; }
+
+- name: Configure varnish-exporter
+  ansible.builtin.copy:
+    dest: /etc/conf.d/varnish-exporter
+    content: |
+      ARGS="-web.listen-address={{ ansible_facts[monitoring_bind_iface | default('wg0')].ipv4.address | default('127.0.0.1') }}:9131"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart varnish exporter
+
+- name: Enable varnish exporter
+  ansible.builtin.service:
+    name: varnish-exporter
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Fetch nginx-prometheus-exporter tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/nginx/nginx-prometheus-exporter/releases/download/v{{ nginx_exporter_version }}/nginx-prometheus-exporter_{{ nginx_exporter_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract nginx-prometheus-exporter binary   # noqa: command-instead-of-module
+  ansible.builtin.command: >
+    tar -xzf /tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz
+        -C /usr/local/bin nginx-prometheus-exporter
+  args:
+    creates: /usr/local/bin/nginx-prometheus-exporter
+
+- name: Drop nginx-exporter init
+  ansible.builtin.copy:
+    dest: /etc/init.d/nginx-exporter
+    mode: "0755"
+    content: |
+      #!/sbin/openrc-run
+      command="/usr/local/bin/nginx-prometheus-exporter"
+      command_args="$ARGS"
+      command_background=yes
+      pidfile="/run/${RC_SVCNAME}.pid"
+      depend() { need net; after nginx; }
+
+- name: Configure nginx-exporter (for the varnish-side local nginx)
+  ansible.builtin.copy:
+    dest: /etc/conf.d/nginx-exporter
+    content: |
+      ARGS="--nginx.scrape-uri=http://127.0.0.1:8081/stub_status \
+            --web.listen-address={{ ansible_facts[monitoring_bind_iface | default('wg0')].ipv4.address | default('127.0.0.1') }}:9113"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart nginx exporter
+
+- name: Enable nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    enabled: true
+    runlevel: default
+    state: started

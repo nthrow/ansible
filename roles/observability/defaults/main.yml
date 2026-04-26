@@ -1,0 +1,31 @@
+---
+obs_bind_iface: wg0
+obs_bind_addr:  "{{ ansible_facts[obs_bind_iface].ipv4.address | default('127.0.0.1') }}"
+
+# Prometheus
+prometheus_port:           9090
+prometheus_scrape_interval: 15s
+prometheus_retention:      30d
+
+# Loki
+loki_port:                 3100
+
+# Grafana
+grafana_port:              3000
+grafana_admin_user:        admin
+grafana_admin_password:    admin   # rotate via vault before exposing
+grafana_root_url:          "http://{{ obs_bind_addr }}:{{ grafana_port }}"
+
+# Dashboards: fetched from grafana.com at provisioning time. Each entry is
+# {name, id, rev}. Rev='latest' or a specific revision number.
+# These IDs are well-known community dashboards for the components we run.
+grafana_dashboards:
+  - { name: node-exporter,  id: 1860,  rev: 41 }   # Node Exporter Full
+  - { name: nginx,          id: 12708, rev: 1 }    # NGINX exporter
+  - { name: docker,         id: 11600, rev: 1 }    # Docker daemon metrics
+  - { name: wireguard,      id: 12177, rev: 1 }    # WireGuard via node_exporter
+  - { name: loki-logs,      id: 13639, rev: 2 }    # Loki dashboard
+  # Varnish: pulled directly from the exporter project (grafana.com 8377
+  # was deleted upstream).
+  - name: varnish
+    url: "https://raw.githubusercontent.com/jonnenauha/prometheus_varnish_exporter/master/dashboards/jonnenauha/dashboard.json"

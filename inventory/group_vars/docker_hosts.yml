@@ -1,0 +1,25 @@
+---
+# Shared across standalone + swarm. Swarm-specific vars live in
+# docker_managers.yml / docker_workers.yml.
+
+docker_advertise_iface: wg0
+
+# Firewall:
+#   ssh on wg0 only (homelab convention)
+#   swarm gossip + overlay only on wg0
+#
+# 2377/tcp is only needed on managers — leaving it open on workers is
+# harmless and keeps the rule list uniform.
+firewall_allow_tcp:
+  - { port: 22,   in: wg0 }
+  - { port: 2377, in: wg0 }
+  - { port: 7946, in: wg0 }
+firewall_allow_udp:
+  - { port: 7946, in: wg0 }
+  - { port: 4789, in: wg0 }
+
+# Docker manipulates iptables itself (FORWARD chain insertion at daemon
+# start) — when the firewall role's iptables-restore handler fires, the
+# docker_host role's restart-docker handler re-inserts those rules. As
+# long as both run in the same play, container forwarding stays intact.
+firewall_forward_default: DROP

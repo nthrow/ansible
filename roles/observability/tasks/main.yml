@@ -1,0 +1,181 @@
+---
+# --- packages -------------------------------------------------
+- name: Install obs stack (with openrc subpkgs)
+  community.general.apk:
+    name:
+      - prometheus
+      - prometheus-openrc
+      - loki
+      - loki-openrc
+      - grafana
+      - grafana-openrc
+    state: present
+
+# --- prometheus -----------------------------------------------
+- name: Render prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: prometheus
+    group: prometheus
+    mode: "0644"
+  notify: reload prometheus
+
+# Alpine's prometheus init reads `prometheus_*` variables from conf.d
+# (NOT a generic ARGS=). Extra flags go in prometheus_args.
+- name: Configure prometheus runtime args
+  ansible.builtin.copy:
+    dest: /etc/conf.d/prometheus
+    content: |
+      prometheus_config_file=/etc/prometheus/prometheus.yml
+      prometheus_storage_path=/var/lib/prometheus/data
+      prometheus_retention_time={{ prometheus_retention }}
+      prometheus_args="--web.listen-address={{ obs_bind_addr }}:{{ prometheus_port }}"
+      output_log=/var/log/prometheus.log
+      error_log=/var/log/prometheus.log
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart prometheus
+
+- name: Enable prometheus
+  ansible.builtin.service:
+    name: prometheus
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- loki -----------------------------------------------------
+# Loki on Alpine: ships with user=loki, group=grafana (no loki group).
+# /var/lib/loki isn't created by the package; ensure it exists + writable.
+- name: Ensure /var/lib/loki exists
+  ansible.builtin.file:
+    path: /var/lib/loki
+    state: directory
+    owner: loki
+    group: grafana
+    mode: "0755"
+
+# Alpine's loki init defaults LOKI_CONF=/etc/loki/loki-local-config.yaml.
+- name: Render loki config
+  ansible.builtin.template:
+    src: loki.yml.j2
+    dest: /etc/loki/loki-local-config.yaml
+    owner: loki
+    group: grafana
+    mode: "0644"
+  notify: restart loki
+
+- name: Enable loki
+  ansible.builtin.service:
+    name: loki
+    enabled: true
+    runlevel: default
+    state: started
+
+# --- grafana --------------------------------------------------
+- name: Render grafana.ini
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: /etc/grafana.ini
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  notify: restart grafana
+
+# Alpine's package ships a conf.d that overrides grafana.ini settings
+# via cfg: args (incl. http_addr=127.0.0.1) and depends on a syslog
+# service. Replace with a minimal version that respects grafana.ini.
+- name: Configure grafana runtime args
+  ansible.builtin.copy:
+    dest: /etc/conf.d/grafana
+    content: |
+      GRAFANA_HOME=/var/lib/grafana
+      GRAFANA_OPTS="-config /etc/grafana.ini -homepath /usr/share/grafana"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart grafana
+
+- name: Ensure grafana provisioning tree
+  ansible.builtin.file:
+    path: "/etc/grafana/provisioning/{{ item }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+  loop: [datasources, dashboards, plugins, alerting, notifiers]
+
+- name: Provision grafana datasources
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: /etc/grafana/provisioning/datasources/datasources.yml
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Provision grafana dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/dashboards.yml
+    owner: grafana
+    group: grafana
+    mode: "0644"
+  notify: restart grafana
+
+- name: Ensure dashboard dir exists
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0755"
+
+# Each entry in grafana_dashboards is either:
+#   - { name, id, rev }   — grafana.com dashboard at /api/dashboards/<id>/revisions/<rev>/download
+#   - { name, url }       — any URL returning dashboard JSON (e.g. raw.githubusercontent.com)
+- name: Fetch dashboards
+  ansible.builtin.get_url:
+    url: "{{ item.url
+             | default('https://grafana.com/api/dashboards/' ~ item.id ~ '/revisions/' ~ item.rev ~ '/download') }}"
+    dest: "/var/lib/grafana/dashboards/{{ item.name }}.json"
+    owner: grafana
+    group: grafana
+    mode: "0644"
+    force: false
+  loop: "{{ grafana_dashboards }}"
+  loop_control:
+    label: "{{ item.name }}{{ ' (id ' ~ item.id ~ ')' if item.id is defined else '' }}"
+  # Sources sometimes go away (deleted ID, moved URL); don't fail the
+  # whole play if one is gone.
+  failed_when: false
+  register: _dashboard_fetch
+  notify: restart grafana
+
+# Many community dashboards reference ${DS_PROMETHEUS} / ${DS_LOKI};
+# rewrite to the concrete datasource UIDs we provisioned.
+- name: Rewrite datasource placeholders in fetched dashboards
+  ansible.builtin.replace:
+    path: "/var/lib/grafana/dashboards/{{ item.name }}.json"
+    regexp: '"\$\{DS_PROMETHEUS\}"'
+    replace: '"prometheus"'
+  loop: "{{ grafana_dashboards }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Rewrite Loki placeholder
+  ansible.builtin.replace:
+    path: "/var/lib/grafana/dashboards/{{ item.name }}.json"
+    regexp: '"\$\{DS_LOKI\}"'
+    replace: '"loki"'
+  loop: "{{ grafana_dashboards }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Enable grafana
+  ansible.builtin.service:
+    name: grafana
+    enabled: true
+    runlevel: default
+    state: started

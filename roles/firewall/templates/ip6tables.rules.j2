@@ -1,0 +1,92 @@
+{# IPv6 filter + nat. Mirrors v4 with the v6-specific differences (full ICMPv6, no fragment drop by default). #}
+*filter
+:INPUT   {{ firewall_input_default }} [0:0]
+:FORWARD {{ firewall_forward_default }} [0:0]
+:OUTPUT  {{ firewall_output_default }} [0:0]
+
+{% if firewall_loopback_protect %}
+-A INPUT  -i lo -j ACCEPT
+-A INPUT  ! -i lo -s ::1/128 -j REJECT
+-A OUTPUT -o lo -j ACCEPT
+{% endif %}
+
+{% if firewall_allow_icmp %}
+-A INPUT  -p ipv6-icmp -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+-A OUTPUT -p ipv6-icmp -j ACCEPT
+{% endif %}
+
+{% if firewall_drop_invalid %}
+-A INPUT -m state --state INVALID -j LOG --log-prefix "DROP INVALID " --log-ip-options --log-tcp-options
+-A INPUT -m state --state INVALID -j DROP
+{% endif %}
+{% if firewall_drop_nonsyn_new %}
+-A INPUT -p tcp ! --syn -m state --state NEW -j DROP
+{% endif %}
+{% if firewall_drop_fragments_v6 %}
+-A INPUT -m frag -j DROP
+{% endif %}
+{% if firewall_drop_xmas_null %}
+-A INPUT -p tcp --tcp-flags ALL ALL  -j DROP
+-A INPUT -p tcp --tcp-flags ALL NONE -j DROP
+{% endif %}
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+{% macro one_rule(port, proto, in_, src) %}-A INPUT {% if in_ %}-i {{ in_ }} {% endif %}{% if src %}-s {{ src }} {% endif %}-p {{ proto }} --dport {{ port }} -m state --state NEW -j ACCEPT
+{% endmacro %}
+{% macro accept_rules(item, proto) -%}
+{% if item is mapping -%}
+{%   set port    = item.port -%}
+{%   set in_     = item.in         | default(none) -%}
+{%   set src     = item.source_v6  | default(none) -%}
+{%   set sources = item.sources_v6 | default(none) -%}
+{%   set v4_only = (item.source is defined or item.sources is defined)
+                   and (item.source_v6 is not defined and item.sources_v6 is not defined) -%}
+{%   if v4_only -%}
+{#   skip — rule is v4-specific (carries v4 addresses) #}
+{%   elif sources -%}
+{%     for s in sources -%}
+{{ one_rule(port, proto, in_, s) -}}
+{%     endfor -%}
+{%   else -%}
+{{ one_rule(port, proto, in_, src) -}}
+{%   endif -%}
+{% else -%}
+{{ one_rule(item, proto, none, none) -}}
+{% endif -%}
+{%- endmacro %}
+{% for item in firewall_allow_tcp %}
+{{ accept_rules(item, 'tcp') }}
+{% endfor %}
+{% for item in firewall_allow_udp %}
+{{ accept_rules(item, 'udp') }}
+{% endfor %}
+
+{% if firewall_log_drops %}
+-A INPUT ! -i lo -m limit --limit {{ firewall_log_rate }} -j LOG --log-prefix "DROP " --log-ip-options --log-tcp-options
+{% endif %}
+
+{% if firewall_drop_invalid %}
+-A FORWARD -m state --state INVALID -j LOG --log-prefix "FWD INVALID " --log-ip-options --log-tcp-options
+-A FORWARD -m state --state INVALID -j DROP
+{% endif %}
+-A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+{% for r in firewall_forward_rules %}
+-A FORWARD {% if r.in is defined %}-i {{ r.in }} {% endif %}{% if r.out is defined %}-o {{ r.out }} {% endif %}{% if r.source_v6 is defined %}-s {{ r.source_v6 }} {% endif %}{% if r.dest_v6 is defined %}-d {{ r.dest_v6 }} {% endif %}-j ACCEPT
+{% endfor %}
+{% if firewall_log_drops %}
+-A FORWARD ! -i lo -m limit --limit {{ firewall_log_rate }} -j LOG --log-prefix "FWD " --log-ip-options --log-tcp-options
+{% endif %}
+
+COMMIT
+
+{% if firewall_nat_masquerade_v6 | default([]) | length > 0 %}
+*nat
+:PREROUTING  ACCEPT [0:0]
+:INPUT       ACCEPT [0:0]
+:OUTPUT      ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+{% for n in firewall_nat_masquerade_v6 %}
+-A POSTROUTING -s {{ n.src }} -o {{ n.out }} -j MASQUERADE
+{% endfor %}
+COMMIT
+{% endif %}

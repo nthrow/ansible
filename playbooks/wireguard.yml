@@ -1,0 +1,17 @@
+---
+# WireGuard hub-and-spoke server.
+# Targets a vanilla cloud Alpine VPS (no LUKS, no ZFS, no GRUB by us —
+# the cloud image handles those). After bootstrapping just enough that
+# python3 + sshd are reachable, run:
+#
+#   ansible-playbook -i inventory/hosts.yml playbooks/wireguard.yml
+#
+- name: WireGuard hub
+  hosts: wireguard_servers
+  gather_facts: true
+  roles:
+    - common
+    - sshd
+    - firewall
+    - wireguard_hub
+    - monitoring_agent

@@ -1,0 +1,55 @@
+---
+# Per-host overrides go in host_vars/<edge>.yml; cluster-wide here.
+
+# === BGP / anycast =============================================
+cdn_edge_local_asn: 65000
+# Per-host: cdn_edge_router_id (default = ansible_host).
+
+# Switch peers — eBGP. Add one entry per ToR/BGP-speaker the edge
+# directly peers with. ASN is the *peer's* ASN.
+cdn_edge_bgp_peers:
+  - { ip: "192.0.2.1", asn: 65500 }
+  # - { ip: "2001:db8::1", asn: 65500 }
+
+# Anycast VIPs announced via BIRD. Bound to lo on each edge node so
+# nginx can listen on them. Use /32 (v4) and /128 (v6).
+# Examples:
+#   cdn_edge_anycast_v4: ["203.0.113.10/32", "203.0.113.11/32"]
+#   cdn_edge_anycast_v6: ["2001:db8:cafe::10/128"]
+cdn_edge_anycast_v4: []
+cdn_edge_anycast_v6: []
+
+# === nginx zones ===============================================
+# Each zone gets its own server block on the edge, terminating TLS
+# and reverse-proxying to a flat list of Varnish backends.
+cdn_edge_zones: []
+#   - name: media
+#     server_names: ["media.example.com"]
+#     listen_v4: "203.0.113.10"             # match an anycast VIP
+#     listen_v6: "2001:db8:cafe::10"        # optional
+#     tls_cert: "/etc/ssl/cdn/media.crt"
+#     tls_key:  "/etc/ssl/cdn/media.key"
+#     upstream_servers:
+#       - "10.0.20.21:6081"
+#       - "10.0.20.22:6081"
+#       - "10.0.20.23:6081"
+#     keepalive: 32
+
+# === firewall ==================================================
+# Inherits the wireguard-style hardened base. Edges accept:
+#   - 22  only on wg0
+#   - 80, 443 from anywhere
+#   - 179 (BGP) only from configured BGP peers (one rule per peer)
+firewall_allow_tcp: "{{ _cdn_edge_base_tcp + _cdn_edge_bgp_tcp }}"
+_cdn_edge_base_tcp:
+  - { port: 22, in: wg0 }
+  - 80
+  - 443
+_cdn_edge_bgp_tcp:
+  - port: 179
+    sources: "{{ cdn_edge_bgp_peers | map(attribute='ip') | list }}"
+
+# Edges don't forward — TLS terminates here, nginx originates a new
+# connection to varnish.
+firewall_forward_rules: []
+firewall_nat_masquerade: []

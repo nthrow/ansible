@@ -1,0 +1,92 @@
+vcl 4.1;
+
+import directors;
+import std;
+
+# --- backends -------------------------------------------------
+backend local_nginx {
+    .host = "127.0.0.1";
+    .port = "{{ cdn_varnish_local_nginx_port }}";
+    .probe = {
+        .url = "/healthz";
+        .timeout = 1s;
+        .interval = 5s;
+        .window = 5;
+        .threshold = 3;
+    }
+}
+
+{% for b in cdn_varnish_object_store_backends %}
+backend {{ b.name }} {
+    .host = "{{ b.host }}";
+    .port = "{{ b.port | default('80') }}";
+{% if b.probe_url is defined %}
+    .probe = {
+        .url = "{{ b.probe_url }}";
+        .timeout = 2s;
+        .interval = 10s;
+        .window = 5;
+        .threshold = 3;
+    }
+{% endif %}
+}
+{% endfor %}
+
+sub vcl_init {
+{% if cdn_varnish_object_store_backends | length > 0 %}
+    new object_store = directors.round_robin();
+{% for b in cdn_varnish_object_store_backends %}
+    object_store.add_backend({{ b.name }});
+{% endfor %}
+{% endif %}
+}
+
+# --- recv: route to backend by host / path -------------------
+sub vcl_recv {
+{% for r in cdn_varnish_routes %}
+{% if r.match_host is defined %}
+    if (req.http.host == "{{ r.match_host }}") {
+        set req.backend_hint = {{ r.backend }};
+        return (hash);
+    }
+{% elif r.match_host_in is defined %}
+    if (req.http.host ~ "^({{ r.match_host_in | join('|') }})$") {
+        set req.backend_hint = {{ r.backend }};
+        return (hash);
+    }
+{% elif r.match_path_prefix is defined %}
+    if (req.url ~ "^{{ r.match_path_prefix }}") {
+        set req.backend_hint = {{ r.backend }};
+        return (hash);
+    }
+{% elif r.match_path_regex is defined %}
+    if (req.url ~ "{{ r.match_path_regex }}") {
+        set req.backend_hint = {{ r.backend }};
+        return (hash);
+    }
+{% endif %}
+{% endfor %}
+
+    # Fallthrough.
+{% if cdn_varnish_object_store_backends | length > 0 %}
+    set req.backend_hint = object_store.backend();
+{% else %}
+    set req.backend_hint = local_nginx;
+{% endif %}
+}
+
+# --- backend_response: L7 manipulation -----------------------
+sub vcl_backend_response {
+{% for h in cdn_varnish_set_response_headers %}
+    set beresp.http.{{ h.name }} = "{{ h.value }}";
+{% endfor %}
+{% for h in cdn_varnish_unset_response_headers %}
+    unset beresp.http.{{ h }};
+{% endfor %}
+}
+
+# --- deliver --------------------------------------------------
+sub vcl_deliver {
+    unset resp.http.Via;
+    unset resp.http.X-Varnish;
+}

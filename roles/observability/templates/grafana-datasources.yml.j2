@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://{{ obs_bind_addr }}:{{ prometheus_port }}
+    isDefault: true
+    editable: false
+  - name: loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://{{ obs_bind_addr }}:{{ loki_port }}
+    editable: false

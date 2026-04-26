@@ -1,0 +1,72 @@
+---
+ansible_user: root
+
+# Repos: edge w/ main+community+testing. Override per-group for stable releases.
+apk_repositories:
+  - http://dl-cdn.alpinelinux.org/alpine/edge/main
+  - http://dl-cdn.alpinelinux.org/alpine/edge/community
+  - http://dl-cdn.alpinelinux.org/alpine/edge/testing
+
+# Base packages every alpine host gets. Strictly OS-agnostic: no kernel,
+# no firmware, no dev headers, no secureboot tooling. Hosts that need
+# those add them via group_vars overrides (kernel_packages, etc.) or
+# pull them in via specific roles (secureboot pulls kernel-hooks,
+# dev_stack pulls linux-headers, etc.).
+base_packages:
+  - chrony
+  - chrony-openrc
+  - curl
+  - e2fsprogs
+  - e2fsprogs-extra
+  - file
+  - htop
+  - iftop
+  - iotop
+  - jq
+  - mlocate
+  - mtr
+  - ncdu
+  - openssl
+  - pciutils
+  - rsync
+  - smartmontools
+  - tcpdump
+  - tmux
+  - util-linux
+  - wget
+
+# Kernel/firmware packages — empty by default. Bare-metal groups
+# (desktops, bare-metal CDN nodes, etc.) override this; cloud VPS hosts
+# leave it empty so we don't install a second kernel alongside the
+# provider-supplied one (linux-virt etc).
+kernel_packages: []
+
+timezone: UTC
+keymap: us us
+
+# ZFS pool name. The pool itself is created by bootstrap.sh; the role
+# ensures dataset/property idempotency on top of it.
+zfs_pool: rpool
+zfs_datasets:
+  - { name: "{{ zfs_pool }}/ROOT",        mountpoint: none,   canmount: off }
+  - { name: "{{ zfs_pool }}/ROOT/alpine", mountpoint: legacy, canmount: off }
+
+# dmcrypt containers (matches what bootstrap.sh wrote).
+# Override on hosts without LUKS by setting dmcrypt_containers: []
+dmcrypt_containers:
+  - { target: swap, source_part: 3, key: /etc/fstab.swap_keyfile }
+  - { target: boot, source_part: 2, key: /etc/fstab.boot_keyfile }
+# bootstrap.sh recorded the disk via partition device path; we read it back
+# from /etc/conf.d/dmcrypt rather than re-deriving here.
+dmcrypt_use_localdotdee: true   # mount /boot + swapon via /etc/local.d
+
+# Firewall: defaults live in roles/firewall/defaults/main.yml. Override
+# per-group (servers.yml, desktops.yml, wireguard_servers.yml).
+
+# Observability: where promtail on every host ships logs. Resolved from
+# the observability host's wireguard address. Set this to "" to disable
+# log shipping fleet-wide.
+loki_push_url: >-
+  {{ ('http://' ~ hostvars[groups['observability'][0]].ansible_host
+                ~ ':3100/loki/api/v1/push')
+     if (groups.get('observability', []) | length > 0) else '' }}

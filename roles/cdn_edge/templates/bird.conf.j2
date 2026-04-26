@@ -1,0 +1,64 @@
+{# BIRD 2 — eBGP to ToR switch, anycast VIPs as static blackholes that get exported. #}
+log syslog all;
+router id {{ cdn_edge_router_id }};
+
+protocol device { }
+
+protocol kernel kernel4 {
+    ipv4 { export all; };
+}
+
+protocol kernel kernel6 {
+    ipv6 { export all; };
+}
+
+# Anycast VIP origins. The VIPs are bound to lo by /etc/local.d so the
+# kernel will deliver packets to nginx; we just need BGP to advertise them.
+{% if cdn_edge_anycast_v4 | length > 0 %}
+protocol static anycast4 {
+    ipv4;
+{% for v in cdn_edge_anycast_v4 %}
+    route {{ v }} blackhole;
+{% endfor %}
+}
+{% endif %}
+
+{% if cdn_edge_anycast_v6 | length > 0 %}
+protocol static anycast6 {
+    ipv6;
+{% for v in cdn_edge_anycast_v6 %}
+    route {{ v }} blackhole;
+{% endfor %}
+}
+{% endif %}
+
+filter export_anycast4 {
+    if proto = "anycast4" then accept;
+    reject;
+}
+filter export_anycast6 {
+    if proto = "anycast6" then accept;
+    reject;
+}
+
+{% for p in cdn_edge_bgp_peers %}
+protocol bgp upstream{{ loop.index }} {
+    description "{{ p.description | default('switch peer ' ~ p.ip) }}";
+    local as {{ cdn_edge_local_asn }};
+    neighbor {{ p.ip }} as {{ p.asn }};
+{% if p.password is defined %}
+    password "{{ p.password }}";
+{% endif %}
+{% if ':' in p.ip %}
+    ipv6 {
+        import none;
+        export filter export_anycast6;
+    };
+{% else %}
+    ipv4 {
+        import none;
+        export filter export_anycast4;
+    };
+{% endif %}
+}
+{% endfor %}

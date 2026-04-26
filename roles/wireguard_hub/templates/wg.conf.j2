@@ -1,0 +1,20 @@
+{# /etc/wireguard/<iface>.conf — managed by ansible. Mode 0600. #}
+[Interface]
+PrivateKey = {{ (wg_privkey_b64.content | b64decode | trim) }}
+Address    = {{ wireguard_server_address_v4 }}{% if wireguard_server_address_v6 %}, {{ wireguard_server_address_v6 }}{% endif %}
+
+ListenPort = {{ wireguard_port }}
+
+{% for p in wireguard_peers %}
+# {{ p.name }}
+[Peer]
+PublicKey  = {{ p.public_key }}
+{% if p.preshared_key is defined %}
+PresharedKey = {{ p.preshared_key }}
+{% endif %}
+AllowedIPs = {{ p.allowed_ips | join(', ') }}
+{% if p.persistent_keepalive is defined %}
+PersistentKeepalive = {{ p.persistent_keepalive }}
+{% endif %}
+
+{% endfor %}

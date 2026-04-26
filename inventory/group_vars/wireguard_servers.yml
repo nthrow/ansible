@@ -1,0 +1,61 @@
+---
+# Hub-and-spoke WireGuard configuration.
+#
+# The hub itself owns 10.0.0.1; peers occupy the rest of the /24.
+# Inter-peer traffic is routed by the hub (FORWARD wg0 → wg0 allowed)
+# but every connection from outside the VPN is dropped except UDP/<port>.
+
+wireguard_interface:           wg0
+wireguard_port:                51820
+wireguard_external_interface:  eth0
+wireguard_subnet_v4:           10.0.0.0/24
+wireguard_server_address_v4:   10.0.0.1/24
+# To enable v6 inside the tunnel, set both:
+# wireguard_subnet_v6:         fd42:69::/64
+# wireguard_server_address_v6: fd42:69::1/64
+
+# Whether the hub MASQUERADEs outbound traffic from peers.
+# Off = pure hub-and-spoke (peer ↔ peer only).
+# On  = peers can also use the hub as an internet exit.
+wireguard_enable_exit: false
+
+# === Peers ====================================================
+# Add devices here as you onboard them. The hub only needs each peer's
+# public key; the peer keeps its own private key. Allowed IPs is what
+# the hub will *route to* this peer — usually just its tunnel /32.
+#
+# wireguard_peers:
+#   - name: desktop1
+#     public_key: "<paste desktop1's wg pubkey here>"
+#     allowed_ips: ["10.0.0.2/32"]
+#     persistent_keepalive: 25
+#   - name: phone
+#     public_key: "<paste phone pubkey>"
+#     allowed_ips: ["10.0.0.10/32"]
+#     persistent_keepalive: 25
+wireguard_peers: []
+
+# === Firewall (overrides roles/firewall/defaults) =============
+# External: only the WireGuard UDP port from the wider internet.
+# SSH: only over the tunnel — no port 22 exposed externally.
+firewall_allow_tcp:
+  - { port: 22, in: "{{ wireguard_interface }}" }
+firewall_allow_udp:
+  - { port: "{{ wireguard_port }}" }
+
+# Inter-peer routing: the whole point of the hub.
+firewall_forward_rules:
+  - { in: "{{ wireguard_interface }}", out: "{{ wireguard_interface }}" }
+
+# Optional MASQUERADE if exit-routing is enabled.
+firewall_nat_masquerade: >-
+  {{ [{'src': wireguard_subnet_v4, 'out': wireguard_external_interface}]
+     if wireguard_enable_exit else [] }}
+
+# Cloud VPS: don't drop fragments — some providers' v6 paths fragment.
+firewall_drop_fragments_v4: true
+firewall_drop_fragments_v6: false
+
+# Enable node_exporter's wireguard collector so the obs stack picks up
+# peer endpoints, transfer counters, last-handshake timestamps.
+node_exporter_flags: "--collector.systemd --collector.processes --collector.wireguard"

@@ -1,0 +1,12 @@
+---
+# Observability host firewall: scrapes are inbound from prometheus
+# (which is on this same host); only thing reachable from peers is
+# Grafana (3000), the Loki push endpoint (3100), and ssh.
+
+firewall_allow_tcp:
+  - { port: 22,                            in: wg0 }
+  - { port: "{{ grafana_port | default(3000) }}", in: wg0 }
+  - { port: "{{ loki_port    | default(3100) }}", in: wg0 }
+
+# This host's own promtail pushes to localhost.
+loki_push_url: "http://{{ obs_bind_addr | default('127.0.0.1') }}:{{ loki_port | default(3100) }}/loki/api/v1/push"

@@ -1,0 +1,66 @@
+---
+# Idempotent management of /etc/conf.d/dmcrypt + /etc/local.d/{boot,swap}.*
+# The LUKS containers themselves are formatted by bootstrap.sh.
+
+- name: Install cryptsetup
+  community.general.apk:
+    name:
+      - cryptsetup
+      - device-mapper
+    state: present
+
+- name: Detect target disk from existing dmcrypt config
+  ansible.builtin.shell: |
+    set -o pipefail
+    awk -F"'" '/^source=/{print $2; exit}' /etc/conf.d/dmcrypt | sed 's/p[0-9]*$//'
+  args:
+    executable: /bin/sh
+  register: dmcrypt_disk_probe
+  changed_when: false
+  check_mode: false
+
+- name: Set target disk fact
+  ansible.builtin.set_fact:
+    dmcrypt_disk: "{{ dmcrypt_target_disk | default(dmcrypt_disk_probe.stdout) }}"
+
+- name: Set partition prefix fact
+  ansible.builtin.set_fact:
+    dmcrypt_part_prefix: >-
+      {{ dmcrypt_disk + 'p'
+         if (dmcrypt_disk is search('nvme|mmcblk|loop'))
+         else dmcrypt_disk }}
+
+- name: Render /etc/conf.d/dmcrypt
+  ansible.builtin.template:
+    src: dmcrypt.j2
+    dest: /etc/conf.d/dmcrypt
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add dmcrypt to boot runlevel
+  ansible.builtin.service:
+    name: dmcrypt
+    enabled: true
+    runlevel: boot
+
+- name: Drop /etc/local.d unlock helpers
+  ansible.builtin.copy:
+    dest: "/etc/local.d/{{ item.name }}"
+    content: "{{ item.body }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - { name: boot.start, body: "#!/bin/sh\nmount /boot\n" }
+    - { name: boot.stop,  body: "#!/bin/sh\numount /boot\n" }
+    - { name: swap.start, body: "#!/bin/sh\nswapon /dev/mapper/swap\n" }
+    - { name: swap.stop,  body: "#!/bin/sh\nswapoff /dev/mapper/swap\n" }
+  when: dmcrypt_use_localdotdee | default(true)
+
+- name: Add local to default runlevel
+  ansible.builtin.service:
+    name: local
+    enabled: true
+    runlevel: default
+  when: dmcrypt_use_localdotdee | default(true)

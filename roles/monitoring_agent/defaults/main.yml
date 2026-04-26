@@ -1,0 +1,30 @@
+---
+# Universal monitoring agents. Bind on the wireguard interface so the
+# observability host can scrape over the tunnel.
+
+monitoring_bind_iface: wg0
+monitoring_bind_addr:  "{{ ansible_facts[monitoring_bind_iface].ipv4.address
+                          | default('127.0.0.1') }}"
+
+# node_exporter
+node_exporter_port: 9100
+# Pass-through CLI flags. The wireguard collector is opt-in (off by
+# default in upstream); enable on wireguard hosts.
+node_exporter_flags: "--collector.systemd --collector.processes"
+
+# alloy (Grafana's unified agent — replacement for promtail)
+# Alpine dropped `loki-promtail` in favor of alloy in 2026.
+alloy_http_port:  12345
+alloy_storage:    /var/lib/alloy
+alloy_config:     /etc/alloy/config.alloy
+
+# Log tail targets shipped to Loki. Each item is {path, job}.
+alloy_log_paths:
+  - { path: "/var/log/messages",          job: "messages" }
+  - { path: "/var/log/nginx/access.log",  job: "nginx" }
+  - { path: "/var/log/nginx/error.log",   job: "nginx" }
+  - { path: "/var/log/varnish/*.log",     job: "varnish" }
+
+# Loki endpoint to push logs to. Leave empty during initial bootstrap;
+# resolved in group_vars/all.yml from the observability host's IP.
+loki_push_url: ""

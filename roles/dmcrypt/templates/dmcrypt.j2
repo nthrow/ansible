@@ -1,0 +1,6 @@
+{% for c in dmcrypt_containers %}
+target='{{ c.target }}'
+source='{{ dmcrypt_part_prefix }}{{ c.source_part }}'
+key='{{ c.key }}'
+
+{% endfor %}

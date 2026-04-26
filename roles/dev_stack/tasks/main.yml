@@ -1,0 +1,19 @@
+---
+- name: Install developer tooling
+  community.general.apk:
+    name: "{{ dev_packages }}"
+    state: present
+
+- name: Enable docker
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Enable libvirtd
+  ansible.builtin.service:
+    name: libvirtd
+    enabled: true
+    runlevel: default
+    state: started

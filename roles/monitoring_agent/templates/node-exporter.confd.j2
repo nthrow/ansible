@@ -1,0 +1,4 @@
+{# /etc/conf.d/node-exporter — read by Alpine's openrc init #}
+output_log=/var/log/node_exporter.log
+error_log=/var/log/node_exporter.err
+ARGS="--web.listen-address={{ monitoring_bind_addr }}:{{ node_exporter_port }} {{ node_exporter_flags }}"

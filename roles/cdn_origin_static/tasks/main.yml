@@ -1,0 +1,98 @@
+---
+- name: Install nginx
+  community.general.apk:
+    name:
+      - nginx
+      - nginx-openrc
+    state: present
+
+- name: Drop default nginx confs
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/nginx/http.d/default.conf
+    - /etc/nginx/conf.d/default.conf
+
+- name: Render origin nginx.conf
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/sbin/nginx -t -c %s"
+  notify: reload nginx
+
+- name: Ensure origin tree
+  ansible.builtin.file:
+    path: "{{ cdn_origin_root }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: ["", "api"]
+
+- name: Seed sample content (idempotent — does not overwrite)
+  ansible.builtin.copy:
+    dest: "{{ cdn_origin_root }}/{{ item.path }}"
+    content: "{{ item.content }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  loop:
+    - { path: "index.html",      content: "<h1>origin</h1>\n" }
+    - { path: "api/status.json", content: "{\"status\":\"ok\",\"tier\":\"origin\"}\n" }
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Enable nginx
+  ansible.builtin.service:
+    name: nginx
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Fetch nginx-prometheus-exporter tarball
+  ansible.builtin.get_url:
+    url: "https://github.com/nginx/nginx-prometheus-exporter/releases/download/v{{ nginx_exporter_version }}/nginx-prometheus-exporter_{{ nginx_exporter_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz"
+    mode: "0644"
+
+- name: Extract nginx-prometheus-exporter binary   # noqa: command-instead-of-module
+  ansible.builtin.command: >
+    tar -xzf /tmp/nginx-prometheus-exporter-{{ nginx_exporter_version }}.tar.gz
+        -C /usr/local/bin nginx-prometheus-exporter
+  args:
+    creates: /usr/local/bin/nginx-prometheus-exporter
+
+- name: Drop nginx-exporter init
+  ansible.builtin.copy:
+    dest: /etc/init.d/nginx-exporter
+    mode: "0755"
+    content: |
+      #!/sbin/openrc-run
+      command="/usr/local/bin/nginx-prometheus-exporter"
+      command_args="$ARGS"
+      command_background=yes
+      pidfile="/run/${RC_SVCNAME}.pid"
+      depend() { need net; after nginx; }
+
+- name: Configure nginx-exporter
+  ansible.builtin.copy:
+    dest: /etc/conf.d/nginx-exporter
+    content: |
+      ARGS="--nginx.scrape-uri=http://127.0.0.1:8081/stub_status \
+            --web.listen-address={{ ansible_facts[monitoring_bind_iface | default('wg0')].ipv4.address | default('127.0.0.1') }}:9113"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart nginx exporter
+
+- name: Enable nginx exporter
+  ansible.builtin.service:
+    name: nginx-exporter
+    enabled: true
+    runlevel: default
+    state: started

@@ -1,0 +1,95 @@
+---
+- name: Install wireguard tooling
+  community.general.apk:
+    name:
+      - wireguard-tools
+      - wireguard-tools-wg-quick
+      - wireguard-tools-openrc
+    state: present
+
+- name: Enable IPv4 forwarding (sysctl)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    sysctl_file: /etc/sysctl.d/wireguard.conf
+    reload: true
+
+- name: Enable IPv6 forwarding (sysctl)
+  ansible.posix.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    state: present
+    sysctl_file: /etc/sysctl.d/wireguard.conf
+    reload: true
+  when: wireguard_subnet_v6 | length > 0
+
+- name: Ensure /etc/wireguard exists
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# Server private key — generated once, never re-rolled by ansible.
+- name: Stat server private key
+  ansible.builtin.stat:
+    path: "{{ wireguard_privkey_path }}"
+  register: wg_privkey
+
+- name: Generate server private key
+  ansible.builtin.shell: |
+    set -e
+    umask 077
+    wg genkey > {{ wireguard_privkey_path }}
+    wg pubkey < {{ wireguard_privkey_path }} > {{ wireguard_pubkey_path }}
+  args:
+    creates: "{{ wireguard_privkey_path }}"
+  when: not wg_privkey.stat.exists
+
+- name: Read server public key
+  ansible.builtin.slurp:
+    src: "{{ wireguard_pubkey_path }}"
+  register: wg_pubkey_b64
+
+- name: Read server private key
+  ansible.builtin.slurp:
+    src: "{{ wireguard_privkey_path }}"
+  register: wg_privkey_b64
+  no_log: true
+
+- name: Set server pubkey fact
+  ansible.builtin.set_fact:
+    wireguard_server_pubkey: "{{ wg_pubkey_b64.content | b64decode | trim }}"
+
+- name: Render wg interface config
+  ansible.builtin.template:
+    src: wg.conf.j2
+    dest: "/etc/wireguard/{{ wireguard_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart wg-quick
+  no_log: true
+
+# Alpine ships wg-quick as a single init script; one symlink per iface.
+- name: Symlink per-interface wg-quick init
+  ansible.builtin.file:
+    src: /etc/init.d/wg-quick
+    dest: "/etc/init.d/wg-quick.{{ wireguard_interface }}"
+    state: link
+
+- name: Enable wg-quick service for interface
+  ansible.builtin.service:
+    name: "wg-quick.{{ wireguard_interface }}"
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Print server pubkey + suggested client snippet
+  ansible.builtin.debug:
+    msg: |
+      Hub public key: {{ wireguard_server_pubkey }}
+      Endpoint:       {{ ansible_host | default(inventory_hostname) }}:{{ wireguard_port }}
+      Tunnel subnet:  {{ wireguard_subnet_v4 }}{{ ', ' + wireguard_subnet_v6 if wireguard_subnet_v6 else '' }}

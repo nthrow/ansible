@@ -1,0 +1,42 @@
+---
+# 3-VM CDN PoC: edge → varnish → origin, plain HTTP, no anycast, no
+# firewall hardening. Use the dedicated inventory:
+#
+#   ansible-playbook -i inventory/poc playbooks/cdn-poc.yml
+#
+# Bring up 3 alpine VMs on a shared bridge first (libvirt's default
+# 192.168.122.0/24 works fine). Set their IPs to match
+# inventory/poc/hosts.yml or edit that file to match what you have.
+
+- name: PoC origin
+  hosts: cdn_origins
+  gather_facts: true
+  roles:
+    - common
+    - cdn_origin_static
+
+- name: PoC varnish
+  hosts: cdn_varnish
+  gather_facts: true
+  roles:
+    - common
+    - cdn_varnish
+
+- name: PoC edge
+  hosts: cdn_edges
+  gather_facts: true
+  roles:
+    - common
+    - cdn_edge
+
+- name: Smoke-test the chain
+  hosts: cdn_edges
+  gather_facts: false
+  tasks:
+    - name: Curl through edge   # noqa: command-instead-of-module
+      ansible.builtin.command: curl -sSI http://localhost/
+      register: smoke
+      changed_when: false
+    - name: Show response headers
+      ansible.builtin.debug:
+        msg: "{{ smoke.stdout_lines }}"

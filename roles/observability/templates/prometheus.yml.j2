@@ -1,0 +1,36 @@
+{# Auto-derived from inventory. Each scrape job is only emitted when at
+   least one host is in the relevant group(s). #}
+global:
+  scrape_interval:     {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_scrape_interval }}
+
+{% macro job(name, group_or_groups, port, tier) -%}
+{%- set groups_list = (group_or_groups if (group_or_groups is iterable and group_or_groups is not string) else [group_or_groups]) -%}
+{%- set hosts = [] -%}
+{%- for g in groups_list -%}
+{%-   for h in (groups.get(g, []) or []) -%}
+{%-     set _ = hosts.append(hostvars[h].ansible_host | default(h)) -%}
+{%-   endfor -%}
+{%- endfor -%}
+{%- if hosts | length > 0 %}
+  - job_name: {{ name }}
+    static_configs:
+      - targets:
+{%   for h in hosts %}
+          - '{{ h }}:{{ port }}'
+{%   endfor %}
+        labels:
+          tier: {{ tier }}
+{%- endif %}
+{%- endmacro %}
+
+scrape_configs:
+{{ job('node',    'alpine',                                       9100, 'host') }}
+{{ job('nginx',   ['cdn_edges', 'cdn_origins', 'cdn_varnish'],    9113, 'cdn') }}
+{{ job('varnish', 'cdn_varnish',                                  9131, 'cdn_varnish') }}
+{{ job('docker',  'docker_hosts',                                 9323, 'docker') }}
+
+  # prometheus self-scrape
+  - job_name: prometheus
+    static_configs:
+      - targets: ['{{ obs_bind_addr }}:{{ prometheus_port }}']

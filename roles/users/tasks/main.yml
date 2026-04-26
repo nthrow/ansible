@@ -1,0 +1,74 @@
+---
+# Portable user-account + doas management. The desktop-only fstab
+# rendering (with bootstrap.sh's ZFS/LUKS/EFI assumptions) is gated on
+# `users_manage_fstab` (default false; flipped to true in
+# group_vars/desktops.yml).
+
+- name: Install doas
+  community.general.apk:
+    name: doas
+    state: present
+
+- name: Install user shell (when one is configured)
+  community.general.apk:
+    name: "{{ desktop_user_shell | basename }}"
+    state: present
+  when: desktop_user is defined and desktop_user_shell is defined
+
+- name: Ensure auxiliary groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ desktop_user_groups | default([]) }}"
+  when: desktop_user is defined
+
+- name: Create desktop user
+  ansible.builtin.user:
+    name: "{{ desktop_user }}"
+    shell: "{{ desktop_user_shell | default(omit) }}"
+    groups: "{{ desktop_user_groups | default([]) | join(',') }}"
+    append: false
+    create_home: true
+    state: present
+  when: desktop_user is defined
+
+- name: Configure doas (wheel persist)
+  ansible.builtin.copy:
+    dest: /etc/doas.d/doas.conf
+    content: "permit persist :wheel\n"
+    owner: root
+    group: root
+    mode: "0400"
+
+- name: Ensure /etc/doas.conf includes drop-in dir
+  ansible.builtin.lineinfile:
+    path: /etc/doas.conf
+    line: 'include "/etc/doas.d/*.conf"'
+    create: true
+    mode: "0400"
+
+# --- desktop-only: /opt bind-mount backing tree + fstab ----------
+- name: Create /opt/<user> backing tree for noexec /home bind mounts
+  ansible.builtin.file:
+    path: "/opt/{{ desktop_user }}/{{ item }}"
+    state: directory
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0755"
+  loop: "{{ home_bind_mounts | default([]) }}"
+  when:
+    - users_manage_fstab | default(false)
+    - desktop_user is defined
+    - home_bind_mounts is defined
+
+- name: Render /etc/fstab (bare-metal-bootstrap layout)
+  ansible.builtin.template:
+    src: fstab.j2
+    dest: /etc/fstab
+    owner: root
+    group: root
+    mode: "0644"
+  when: users_manage_fstab | default(false)
+  vars:
+    efi_uuid: "{{ ansible_mounts | selectattr('mount', 'equalto', '/efi')
+                                  | map(attribute='uuid') | first | default('CHANGE-ME') }}"

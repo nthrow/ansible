@@ -1,0 +1,9 @@
+---
+# Apply the right playbook to each host based on group membership.
+# observability runs last so the others have populated the inventory
+# state that prometheus.yml is templated from.
+- import_playbook: desktop.yml
+- import_playbook: wireguard.yml
+- import_playbook: cdn.yml
+- import_playbook: docker.yml
+- import_playbook: observability.yml

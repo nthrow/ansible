@@ -1,0 +1,25 @@
+---
+cdn_varnish_listen_addr:    "0.0.0.0"
+cdn_varnish_listen_port:    6081
+cdn_varnish_admin_addr:     "127.0.0.1"
+cdn_varnish_admin_port:     6082
+cdn_varnish_storage:        "malloc,256m"
+cdn_varnish_extra_args:     ""
+
+cdn_varnish_object_store_backends: []
+cdn_varnish_routes: []
+cdn_varnish_set_response_headers: []
+cdn_varnish_unset_response_headers: []
+
+cdn_varnish_local_nginx_port: 8080
+cdn_varnish_content_path:     /srv/cdn-content
+
+cdn_varnish_nfs_role:           none   # none | server | client
+cdn_varnish_nfs_clients:        []
+cdn_varnish_nfs_remote_host:    ""
+cdn_varnish_nfs_remote_export:  ""
+cdn_varnish_nfs_mount_options:  "ro,nfsvers=4.2,hard,intr,nodev,nosuid,noexec"
+
+# Exporter binary versions (apk doesn't ship these on Alpine).
+nginx_exporter_version:   "1.5.0"
+varnish_exporter_version: "1.6.1"

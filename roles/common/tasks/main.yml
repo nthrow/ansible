@@ -1,0 +1,69 @@
+---
+# Avoid `copy:` on /etc/hostname — atomic rename fails on bind-mounted
+# files (containers, some lxc setups). `shell:` writes in place.
+- name: Read current hostname
+  ansible.builtin.command: cat /etc/hostname
+  register: _current_hostname
+  changed_when: false
+  check_mode: false
+
+- name: Set hostname
+  ansible.builtin.shell: 'echo "{{ hostname | default(inventory_hostname) }}" > /etc/hostname'
+  when: _current_hostname.stdout != (hostname | default(inventory_hostname))
+  changed_when: true   # `when:` already gates to the actual-change case
+  notify: apply hostname
+
+- name: Set timezone symlink
+  ansible.builtin.file:
+    src: "/usr/share/zoneinfo/{{ timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+
+- name: Configure apk repositories
+  ansible.builtin.copy:
+    dest: /etc/apk/repositories
+    content: "{{ apk_repositories | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: apk update
+
+# Force apk update to run NOW (before any package install task), not at
+# end-of-play. Without this the install task below would run against
+# the stale apk index.
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Install base packages
+  community.general.apk:
+    name: "{{ base_packages }}"
+    state: present
+
+- name: Install kernel packages (bare-metal hosts only)
+  community.general.apk:
+    name: "{{ kernel_packages }}"
+    state: present
+  when: kernel_packages | length > 0
+
+- name: Configure keymap
+  ansible.builtin.lineinfile:
+    path: /etc/conf.d/loadkmap
+    regexp: '^KEYMAP='
+    line: "KEYMAP=/etc/keymap/{{ (keymap.split() | last) }}.bmap.gz"
+    create: true
+    mode: "0644"
+
+# loadkmap ships with busybox-openrc on real Alpine; some minimal images
+# (containers, lxc bases) skip it. Don't fail if it's not there.
+- name: Stat loadkmap init
+  ansible.builtin.stat:
+    path: /etc/init.d/loadkmap
+  register: _loadkmap_init
+
+- name: Enable loadkmap on boot
+  ansible.builtin.service:
+    name: loadkmap
+    enabled: true
+    runlevel: boot
+  when: _loadkmap_init.stat.exists

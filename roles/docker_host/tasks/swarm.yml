@@ -1,0 +1,52 @@
+---
+# Swarm bring-up. Runs once per host; the first-manager-only steps use
+# run_once + delegate_to so the join tokens come back as facts that
+# every other host can read.
+
+- name: Resolve advertise address from interface
+  ansible.builtin.set_fact:
+    docker_advertise_addr: "{{ ansible_facts[docker_advertise_iface].ipv4.address }}"
+  when: docker_advertise_addr | length == 0
+
+- name: Initialize swarm on first manager
+  community.docker.docker_swarm:
+    state: present
+    advertise_addr: "{{ hostvars[groups['docker_managers'][0]].docker_advertise_addr }}"
+  run_once: true
+  delegate_to: "{{ groups['docker_managers'][0] }}"
+
+- name: Read swarm join tokens
+  community.docker.docker_swarm_info:
+  run_once: true
+  delegate_to: "{{ groups['docker_managers'][0] }}"
+  register: swarm_info
+  no_log: true
+
+- name: Stash tokens + first-manager addr
+  ansible.builtin.set_fact:
+    docker_swarm_manager_token:    "{{ swarm_info.swarm_facts.JoinTokens.Manager }}"
+    docker_swarm_worker_token:     "{{ swarm_info.swarm_facts.JoinTokens.Worker }}"
+    docker_swarm_first_manager:    "{{ hostvars[groups['docker_managers'][0]].docker_advertise_addr }}"
+  no_log: true
+
+- name: Join additional managers
+  community.docker.docker_swarm:
+    state: join
+    advertise_addr: "{{ docker_advertise_addr }}"
+    join_token:     "{{ docker_swarm_manager_token }}"
+    remote_addrs:
+      - "{{ docker_swarm_first_manager }}:2377"
+  when:
+    - docker_swarm_role == "manager"
+    - inventory_hostname != groups['docker_managers'][0]
+  no_log: true
+
+- name: Join workers
+  community.docker.docker_swarm:
+    state: join
+    advertise_addr: "{{ docker_advertise_addr }}"
+    join_token:     "{{ docker_swarm_worker_token }}"
+    remote_addrs:
+      - "{{ docker_swarm_first_manager }}:2377"
+  when: docker_swarm_role == "worker"
+  no_log: true

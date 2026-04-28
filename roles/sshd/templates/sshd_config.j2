@@ -3,7 +3,6 @@ PermitRootLogin {{ sshd_permit_root | default('prohibit-password') }}
 PasswordAuthentication {{ 'yes' if (sshd_password_auth | default(false)) else 'no' }}
 PubkeyAuthentication yes
 ChallengeResponseAuthentication no
-UsePAM no
 X11Forwarding no
 PrintMotd no
 AcceptEnv LANG LC_*

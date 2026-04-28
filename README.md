@@ -143,3 +143,9 @@ troubleshooting. Cross-tier-shared first, then host-class-specific:
 - [docs/bootstrap.md](docs/bootstrap.md) — LiveUSB install walkthrough
 - [docs/secrets.md](docs/secrets.md) — keyfiles, vault, rotation
 - [docs/troubleshooting.md](docs/troubleshooting.md) — common breakages
+
+## License
+
+MIT with the [Commons Clause](https://commonsclause.com/) — free for use,
+modification, and distribution; *not* for being sold as a hosted product
+or paid consulting offering. See [LICENSE](LICENSE).

@@ -12,7 +12,10 @@
 - name: Detect target disk from existing dmcrypt config
   ansible.builtin.shell: |
     set -o pipefail
-    awk -F"'" '/^source=/{print $2; exit}' /etc/conf.d/dmcrypt | sed 's/p[0-9]*$//'
+    # Strip trailing partition number. NVMe/mmc/loop names use a "p"
+    # separator (nvme0n1p3); plain SATA/SCSI/virtio do not (sda3, vda3).
+    # The "p?" matches either form.
+    awk -F"'" '/^source=/{print $2; exit}' /etc/conf.d/dmcrypt | sed -E 's/p?[0-9]+$//'
   args:
     executable: /bin/sh
   register: dmcrypt_disk_probe

@@ -2,7 +2,7 @@
 {% if 'desktops' in group_names %}
 {{ zfs_pool }}/ROOT/home	/home		zfs	rw,relatime,xattr,posixacl,casesensitive,nosuid,nodev,noexec 0 1
 {% endif %}
-UUID={{ efi_uuid }}		/efi		vfat	rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=utf8,shortname=mixed,errors=remount-ro 0 2
+LABEL=efi		/efi		vfat	rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=utf8,shortname=mixed,errors=remount-ro 0 2
 /dev/mapper/boot	/boot		ext4	rw,relatime,noauto 0 2
 tmpfs			/tmp		tmpfs	nosuid,nodev	0	0
 

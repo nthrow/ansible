@@ -112,5 +112,5 @@ dev_packages:
   - yazi
   - youtube-dl
   - yt-dlp
-  - zed
+  # zed editor was dropped from alpine; install via flatpak or build from source
   - zip

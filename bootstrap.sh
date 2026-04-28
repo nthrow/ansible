@@ -38,12 +38,22 @@ modprobe zfs 2>/dev/null || die "boot the *extended* iso (zfs module needed)"
 
 apk update >/dev/null
 apk add --quiet sfdisk e2fsprogs e2fsprogs-extra dosfstools cryptsetup \
-	xkcdpass openssl zfs
+	openssl zfs
+
+# xkcdpass lives in edge/community; the LiveUSB's repos may still be
+# v3.x at this point (the edge-flip happens later, after setup-alpine).
+# `-X` adds a repo for this single invocation without modifying
+# /etc/apk/repositories — keeps the LiveUSB clean for setup-alpine.
+apk add --quiet --no-cache \
+	-X https://dl-cdn.alpinelinux.org/alpine/edge/community \
+	xkcdpass
 
 # ---- pick disk ---------------------------------------------
-disks=$(ls /sys/block 2>/dev/null | grep -E '^nvme[0-9]+n[0-9]+$' || true)
-[ -n "$disks" ] || die "no NVMe disks found"
-say "NVMe disks present"
+# Match NVMe, virtio, SATA/SCSI, MMC, Xen — anything that's a "real"
+# block device the kernel exposes as a top-level disk.
+disks=$(ls /sys/block 2>/dev/null | grep -E '^(nvme[0-9]+n[0-9]+|[svx]d[a-z]+|mmcblk[0-9]+)$' || true)
+[ -n "$disks" ] || die "no installable disks found"
+say "Installable disks present"
 for d in $disks; do
 	gib=$(( $(cat /sys/block/$d/size) * 512 / 1024 / 1024 / 1024 ))
 	echo "  /dev/$d  ${gib}G"
@@ -130,7 +140,15 @@ ${PART}2: size=${BOOT_MB}MiB,type=8DA63339-0007-60C0-C436-083AC8230908
 ${PART}3: size=${SWAP_MB}MiB,type=8DA63339-0007-60C0-C436-083AC8230908
 ${PART}4: type=6A898CC3-1DD2-11B2-99A6-080020736631
 EOF
-partprobe "$DISK" 2>/dev/null || true; sleep 2
+# Re-read the partition table AND make sure device nodes exist.
+# busybox mdev (alpine extended live) needs `mdev -s` to scan; full
+# udev/eudev settles on its own, but `udevadm settle` is harmless if
+# both are present.
+partprobe   "$DISK" 2>/dev/null || true
+blockdev --rereadpt "$DISK" 2>/dev/null || true
+command -v mdev    >/dev/null 2>&1 && mdev -s
+command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=5
+sleep 2
 [ -b "${PART}1" ] || die "partitions did not appear"
 
 # ---- LUKS swap ---------------------------------------------
@@ -190,12 +208,13 @@ chmod 0400 /mnt/etc/fstab.*_keyfile
 ln -sf /etc/fstab.zfs_keyfile /mnt/crypto_keyfile.bin
 zfs set keylocation=file:///crypto_keyfile.bin "$ZPOOL"
 
-# minimal fstab — Ansible will template the full one with bind mounts
-EFI_UUID=$(blkid -s UUID -o value "${PART}1")
+# minimal fstab — Ansible will template the full one with bind mounts.
+# Reference the ESP by LABEL (set at mkfs time) instead of UUID — busybox
+# blkid in the live ISO doesn't support `-s UUID -o value` cleanly.
 cat > /mnt/etc/fstab <<EOF
 $ZPOOL/ROOT/alpine	/		zfs	rw,relatime,xattr,posixacl,casesensitive 0 1
 $ZPOOL/ROOT/home	/home		zfs	rw,relatime,xattr,posixacl,casesensitive,nosuid,nodev,noexec 0 1
-UUID=$EFI_UUID		/efi		vfat	rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=utf8,shortname=mixed,errors=remount-ro 0 2
+LABEL=efi		/efi		vfat	rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=utf8,shortname=mixed,errors=remount-ro 0 2
 /dev/mapper/boot	/boot		ext4	rw,relatime,noauto 0 2
 tmpfs			/tmp		tmpfs	nosuid,nodev	0	0
 EOF
@@ -275,9 +294,12 @@ mkdir -m 0700 /mnt/root/.ssh
 printf '%s\n' "$ROOT_AUTHORIZED_KEYS" > /mnt/root/.ssh/authorized_keys
 chmod 0600 /mnt/root/.ssh/authorized_keys
 
-# Allow root key login (PermitRootLogin prohibit-password is default-OK with keys).
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /mnt/etc/ssh/sshd_config
-sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/'      /mnt/etc/ssh/sshd_config
+# Lock root login to keys-only. busybox sed in the live ISO doesn't
+# support BRE `\?`, so use ERE (`-E`) with `?`. Last-line-wins in
+# sshd_config means we could also just append, but rewriting in place
+# keeps the file tidy.
+sed -i -E 's/^#?PermitRootLogin.*/PermitRootLogin prohibit-password/' /mnt/etc/ssh/sshd_config
+sed -i -E 's/^#?PubkeyAuthentication.*/PubkeyAuthentication yes/'      /mnt/etc/ssh/sshd_config
 
 # ---- cleanup -----------------------------------------------
 sync

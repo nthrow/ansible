@@ -25,6 +25,7 @@ desktop_user_groups:
   - wheel
   - audio
   - video
+  - input
   - netdev
   - plugdev
   - docker

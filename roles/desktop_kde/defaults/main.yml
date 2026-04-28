@@ -95,7 +95,6 @@ kde_packages:
   - xorg-server
   - acpid
   - acpid-openrc
-  - cgroups
   - udisks2-openrc
 
 font_packages:
@@ -109,7 +108,8 @@ font_packages:
   - font-noto-extra
   - font-opensans
   - font-terminus
-  - font-ubuntu
+  # font-ubuntu was removed from alpine repos; the nerd variants bundle
+  # Ubuntu glyphs alongside the Nerd Font additions.
   - font-ubuntu-mono-nerd
   - font-ubuntu-nerd
   - msttcorefonts-installer

@@ -29,22 +29,65 @@
     groups: "{{ desktop_user_groups | default([]) | join(',') }}"
     append: false
     create_home: true
+    # '*' = no valid password but account NOT locked. Without this,
+    # ansible.builtin.user creates the account with shadow password
+    # '!' (locked), which makes sshd reject pubkey auth with
+    # "User <name> not allowed because account is locked", and SDDM
+    # likewise refuses to authenticate the session.
+    password: "*"
     state: present
   when: desktop_user is defined
 
+- name: Ensure desktop user .ssh exists
+  ansible.builtin.file:
+    path: "/home/{{ desktop_user }}/.ssh"
+    state: directory
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0700"
+  when: desktop_user is defined
+
+# Inherit root's authorized_keys (populated by bootstrap.sh) so whoever
+# ran the install can ssh in as alice without a separate key roundtrip.
+# Override by setting `desktop_user_authorized_keys: []` to skip the
+# inherit, or to a list of keys to install those instead of root's.
+- name: Install authorized_keys for desktop user (inherit from root)
+  ansible.builtin.copy:
+    src: /root/.ssh/authorized_keys
+    remote_src: true
+    dest: "/home/{{ desktop_user }}/.ssh/authorized_keys"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0600"
+  when:
+    - desktop_user is defined
+    - desktop_user_authorized_keys is not defined
+
+- name: Install authorized_keys for desktop user (explicit list)
+  ansible.posix.authorized_key:
+    user: "{{ desktop_user }}"
+    key: "{{ item }}"
+    state: present
+    exclusive: "{{ ansible_loop.first }}"
+  loop: "{{ desktop_user_authorized_keys | default([]) }}"
+  loop_control:
+    extended: true
+  when:
+    - desktop_user is defined
+    - desktop_user_authorized_keys is defined
+    - desktop_user_authorized_keys | length > 0
+
+# Alpine ships opendoas 6.8.2 which advertises drop-in support
+# (`/etc/doas.d/*.conf`) in the default doas.conf comments, but the
+# `include` directive itself is not actually parsed in this build —
+# `doas -C` fails with "syntax error at line 6". We just write the
+# rule into /etc/doas.conf directly.
 - name: Configure doas (wheel persist)
   ansible.builtin.copy:
-    dest: /etc/doas.d/doas.conf
+    dest: /etc/doas.conf
     content: "permit persist :wheel\n"
     owner: root
     group: root
-    mode: "0400"
-
-- name: Ensure /etc/doas.conf includes drop-in dir
-  ansible.builtin.lineinfile:
-    path: /etc/doas.conf
-    line: 'include "/etc/doas.d/*.conf"'
-    create: true
     mode: "0400"
 
 # --- desktop-only: /opt bind-mount backing tree + fstab ----------
@@ -69,6 +112,3 @@
     group: root
     mode: "0644"
   when: users_manage_fstab | default(false)
-  vars:
-    efi_uuid: "{{ ansible_mounts | selectattr('mount', 'equalto', '/efi')
-                                  | map(attribute='uuid') | first | default('CHANGE-ME') }}"

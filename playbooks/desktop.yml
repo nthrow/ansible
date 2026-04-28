@@ -8,11 +8,13 @@
     - common
     - zfs
     - dmcrypt
+    # users runs before grub_efi because it renders /etc/fstab (with the
+    # LABEL=efi entry) and grub_efi later does `mount /efi`.
+    - users
     - sshd
     - firewall
     - grub_efi
     - secureboot
-    - users
 
     # Desktop-only:
     - networking_desktop

@@ -12,5 +12,6 @@ Index. Read [architecture.md](architecture.md) first.
 | [bootstrap.md](bootstrap.md) | Walkthrough of `bootstrap.sh`: what each phase does, where the keyfiles live, recovery flow. |
 | [secrets.md](secrets.md) | LUKS keyfiles, ZFS keys, Secure Boot CA, ansible-vault patterns. |
 | [troubleshooting.md](troubleshooting.md) | Cross-cutting failure modes and their fixes. |
+| [desktop-vm-validation.md](desktop-vm-validation.md) | VM-based runbook for end-to-end desktop build validation (bootstrap.sh + boot chain + KDE). |
 
 For per-role usage, see each `roles/<name>/README.md`.

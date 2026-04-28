@@ -17,6 +17,33 @@
     group: root
     mode: "0644"
 
+# Alpine boots with busybox `mdev` populating /dev, but KDE/elogind
+# require eudev for proper udev-rule processing (in particular
+# /usr/lib/udev/rules.d/71-seat.rules tags DRM devices `master-of-seat`,
+# which is what makes elogind report CanGraphical=true on seat0 — and
+# SDDM checks that property before showing a greeter). Switch sysinit
+# from mdev to the eudev service stack. This is a long-standing Alpine
+# default, not a regression — desktops always need this swap.
+
+- name: Remove mdev from sysinit (replaced by udev for proper rule processing)
+  ansible.builtin.command: rc-update del mdev sysinit
+  register: _kde_mdev_del
+  changed_when: _kde_mdev_del.rc == 0
+  failed_when:
+    - _kde_mdev_del.rc != 0
+    - "'is not in the runlevel' not in _kde_mdev_del.stderr"
+    - "'does not exist' not in _kde_mdev_del.stderr"
+
+- name: Enable udev openrc services in sysinit
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    runlevel: sysinit
+  loop:
+    - udev
+    - udev-trigger
+    - udev-settle
+
 - name: Stat desktop-related init scripts
   ansible.builtin.stat:
     path: "/etc/init.d/{{ item }}"

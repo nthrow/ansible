@@ -1,0 +1,76 @@
+---
+# Shared between desktop_kde + desktop_gnome (and any future DE role).
+# Install once here, install only the DE-specific bits in the per-DE
+# role.
+
+desktop_base_packages:
+  # Session manager + udev/eudev — required for any DE.  elogind tracks
+  # active sessions; eudev populates /dev with proper rules so DRM
+  # devices get tagged master-of-seat (CanGraphical=true).
+  - elogind
+  - elogind-openrc
+  - eudev
+  - polkit-elogind
+  # Power + ACPI + storage daemon.
+  - acpid
+  - acpid-openrc
+  - power-profiles-provider
+  - powertop
+  - tlp
+  - tlp-openrc
+  - tlp-rdw
+  - udisks2
+  - udisks2-openrc
+  # Mesa / Vulkan / X11 (Wayland sessions still want the X11 fallback
+  # for legacy clients via Xwayland, which both compositors ship).
+  - mesa-va-gallium
+  - mesa-vulkan-ati
+  - vulkan-loader
+  - vulkan-tools
+  - xclip
+  - xf86-input-libinput
+  - xhost
+  - xinit
+  - xorg-server
+  # Firmware / EFI utilities.
+  - fwupd
+  - fwupd-efi
+  - ovmf
+  # Cross-DE app baseline.
+  - alacritty
+  - ghostty             # default terminal in both KDE + GNOME setups
+  - firefox
+  - mpv
+  - vlc
+  - gparted
+  - dconf-editor
+  # Polkit / portal core.  Each DE adds its own portal backend +
+  # auth-agent on top.
+  - apk-polkit-rs
+  - libapk2
+  - libnm
+  - libqrencode
+  - xdg-desktop-portal
+  - xdg-user-dirs
+  - xdg-utils
+  - pinentry
+
+# Fonts — same set used by every DE.  If you add or drop a font, do
+# it here, not in the per-DE roles.
+desktop_base_font_packages:
+  - font-awesome
+  - font-dejavu
+  - font-inconsolata
+  - font-liberation
+  - font-noto
+  - font-noto-cjk
+  - font-noto-emoji
+  - font-noto-extra
+  - font-opensans
+  - font-terminus
+  # font-ubuntu was removed from alpine repos; the nerd variants bundle
+  # Ubuntu glyphs alongside the Nerd Font additions.
+  - font-ubuntu-mono-nerd
+  - font-ubuntu-nerd
+  - msttcorefonts-installer
+  - ocean-sound-theme

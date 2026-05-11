@@ -1,0 +1,5 @@
+---
+- name: dconf update
+  # Recompiles /etc/dconf/db/site.d/* into the site database.  Required
+  # any time the dconf override files change.
+  ansible.builtin.command: dconf update

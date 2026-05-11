@@ -1,0 +1,38 @@
+---
+# Alpine apk upgrade with snapshot + risky-component flagging + report.
+#
+# Designed for a staging-first workflow:
+#   1. Run against the desktop VM with `-e upgrade_dry_run=true` to see
+#      the pending delta.
+#   2. Run against the VM for real.  Eyeball the report; manually
+#      verify the desktop session works.
+#   3. Run against bare metal.
+#
+# See roles/upgrade/README.md for full details, var reference, and
+# rollback recipe.
+#
+# Examples:
+#   # Dry-run against the staging VM
+#   ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml \
+#     -e upgrade_dry_run=true --limit alpine-desktop-test
+#
+#   # Real upgrade on the staging VM
+#   ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml \
+#     --limit alpine-desktop-test
+#
+#   # Bare-metal apply
+#   ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml \
+#     --limit thinkpad
+#
+# Default host group is `desktops` because that's where the risky-
+# component analysis is meaningful.  Override with `--limit` or by
+# editing `hosts:` below if you want to upgrade servers via the same
+# flow (it works fine; the desktop-specific risky categories just
+# won't trigger).
+
+- name: Alpine apk upgrade with safety net
+  hosts: desktops
+  gather_facts: true
+  become: false   # already log in as root via bootstrap-installed key
+  roles:
+    - upgrade

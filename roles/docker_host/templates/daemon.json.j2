@@ -1,13 +1,31 @@
-{{ ({
-  "data-root":       docker_data_root,
-  "log-driver":      docker_log_driver,
+{#
+  Common daemon.json for both rootful and rootless modes.
+
+  In rootless mode we drop:
+    - data-root: rootless docker stores data under
+      $HOME/.local/share/docker; pinning data-root would either point at
+      a path the rootless user can't write, or require the operator to
+      manage permissions on a shared dir.  Letting docker pick its
+      default is the path of least surprise.
+    - metrics-addr: rootless docker runs in its own network namespace,
+      so binding to wg0's host IP from inside the daemon is awkward
+      (the address isn't directly visible).  Operators who want
+      metrics in rootless mode can add metrics-addr via
+      docker_daemon_extra with an address that makes sense for their
+      rootlesskit netns config.
+#}
+{% set base = {
+  "log-driver": docker_log_driver,
   "log-opts": {
-    "max-size":      docker_log_max_size,
-    "max-file":      docker_log_max_files
+    "max-size": docker_log_max_size,
+    "max-file": docker_log_max_files
   },
-  "live-restore":    docker_live_restore,
-  "userland-proxy":  docker_userland_proxy,
-  "metrics-addr":    (ansible_facts[docker_advertise_iface].ipv4.address
-                      | default('127.0.0.1')) ~ ':9323',
-  "experimental":    true
-} | combine(docker_daemon_extra)) | to_nice_json }}
+  "live-restore": docker_live_restore,
+  "userland-proxy": docker_userland_proxy,
+  "experimental": true
+} %}
+{% if not docker_rootless %}
+{%   set _ = base.update({"data-root": docker_data_root}) %}
+{%   set _ = base.update({"metrics-addr": (ansible_facts[docker_advertise_iface].ipv4.address | default('127.0.0.1')) ~ ':9323'}) %}
+{% endif %}
+{{ (base | combine(docker_daemon_extra)) | to_nice_json }}

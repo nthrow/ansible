@@ -1,0 +1,16 @@
+# Managed by ansible (roles/desktop_gnome) — do not edit by hand.
+#
+# Mirrors the upstream GDM /etc/gdm/custom.conf format.  Only the
+# settings we actually care about are emitted here; everything else
+# falls through to GDM defaults.
+
+[daemon]
+WaylandEnable={{ "true" if gdm_wayland_enable | bool else "false" }}
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]

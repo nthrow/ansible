@@ -1,0 +1,55 @@
+---
+# Tear down KDE.  Stops + disables sddm, removes the sddm.conf
+# override, removes the KDE package set.  Leaves the cross-DE
+# infrastructure (elogind, eudev, fonts, X11, mesa, etc.) in place —
+# `desktop_base` packages are not touched here.
+#
+# Run before switching to a different DE:
+#
+#   1. Edit host_vars/<host>.yml: set desktop_environment: gnome
+#   2. ansible-playbook desktop.yml --tags uninstall_kde --limit <host>
+#   3. ansible-playbook desktop.yml --limit <host>     # installs GNOME
+#
+# Step 2 and 3 can run in either order — the install run will start
+# gdm, the uninstall run will stop sddm.  Doing uninstall first means
+# you don't briefly have both DMs trying to claim seat0.
+#
+# The user's chosen-DE data (Plasma config in ~/.config/plasma*,
+# ~/.local/share/plasma*, ~/.kde) is NOT removed.  If you want a
+# clean wipe of those, do it manually as the desktop user.
+
+- name: Stop sddm (if running)
+  ansible.builtin.service:
+    name: sddm
+    state: stopped
+  failed_when: false
+
+- name: Disable sddm at default runlevel
+  ansible.builtin.command: rc-update del sddm default
+  register: _kde_sddm_del
+  changed_when: _kde_sddm_del.rc == 0
+  failed_when:
+    - _kde_sddm_del.rc != 0
+    - "'is not in the runlevel' not in _kde_sddm_del.stderr"
+    - "'does not exist' not in _kde_sddm_del.stderr"
+
+- name: Remove sddm.conf override
+  ansible.builtin.file:
+    path: /etc/sddm.conf
+    state: absent
+
+- name: Uninstall KDE packages
+  # Using `command` instead of `community.general.apk` because that
+  # module returns generic "failed to remove" with no diagnostic when
+  # apk's exit code is non-zero — and apk del exits non-zero whenever
+  # reverse-deps prevent some package removals, even though "World
+  # updated" actually succeeded.  That happens with shared packages
+  # like breeze-icons (held by bluedevil) and gtksourceview4 (held by
+  # virt-manager).  We treat that case as success.
+  ansible.builtin.command:
+    cmd: "apk del {{ kde_packages | join(' ') }}"
+  register: _kde_apk_del
+  changed_when: "'Purging' in _kde_apk_del.stdout or 'Removing' in _kde_apk_del.stdout"
+  failed_when:
+    - _kde_apk_del.rc != 0
+    - "'World updated' not in _kde_apk_del.stdout"

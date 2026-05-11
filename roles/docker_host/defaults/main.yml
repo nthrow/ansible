@@ -11,9 +11,29 @@ docker_live_restore:     true
 # config we don't have a first-class var for (mirrors, dns, etc.).
 docker_daemon_extra: {}
 
+# === Rootless mode =============================================
+# Run dockerd as a non-privileged user via user namespaces.  Default
+# for standalone hosts; force-disabled in swarm groups (see
+# group_vars/docker_managers.yml + docker_workers.yml) because overlay
+# networks do not work in rootless mode and swarm is non-functional
+# without them.
+docker_rootless: true
+
+# User that owns the rootless daemon.  Required when docker_rootless=true.
+# Must already exist (the role does not create it).  Rootless data lives
+# under this user's $HOME/.local/share/docker, not /var/lib/docker.
+docker_rootless_user: ""
+
+# Subordinate UID/GID range for the rootless user's user-namespace.
+# 65536 IDs starting at 100000 is the conventional allocation;
+# bump start if you have other subuid consumers (LXC, podman, etc.).
+docker_rootless_subid_start: 100000
+docker_rootless_subid_count: 65536
+
 # === Users =====================================================
-# If set, this existing user gets added to the docker group. Leave
-# empty to skip (typical for headless homelab boxes).
+# Rootful only: existing user added to the docker group.  Ignored in
+# rootless mode (the rootless user is docker_rootless_user; group
+# membership is not how access is gated).
 docker_user: ""
 
 # === Optional tooling =========================================

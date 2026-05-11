@@ -1,0 +1,137 @@
+# Alpine upgrade report — {{ inventory_hostname }}
+
+| Field | Value |
+|-------|-------|
+| Started | {{ _upgrade_started_at }} |
+| Finished | {{ ansible_date_time.iso8601 }} |
+| Mode | {{ "DRY-RUN (no changes applied)" if upgrade_dry_run | bool else "live upgrade" }} |
+| Alpine version | {{ _upgrade_alpine_version }} |
+| Running kernel | {{ _upgrade_kernel_running }} |
+| ZFS snapshot | {{ _upgrade_snapshot_full_name | default("(snapshot disabled)") }} |
+| Pending pre-upgrade | {{ _upgrade_pending_count.stdout | default("?") }} |
+
+## Summary
+
+- Packages added/upgraded: **{{ _upgrade_diff_added | length }}**
+- Packages removed/downgraded: **{{ _upgrade_diff_removed | length }}**
+
+{% if _upgrade_risky_hits | length > 0 %}
+## ⚠ Risky-component changes
+
+These categories of packages have a track record of breaking desktop
+sessions on Alpine edge.  Eyeball each one in the staging VM before
+applying to bare metal.  Each entry has a search link to the Alpine
+aports tracker (packaging) and, where curated, the upstream issue
+tracker — extend the upstream map via `upgrade_risky_tracker_links`
+in the role defaults.
+
+{% for category, lines in _upgrade_risky_hits.items() %}
+### `{{ category }}`
+
+{% for line in lines %}
+{%- set pkg_exact = line | regex_replace('-[0-9].*', '') -%}
+{%- set pkg_root  = pkg_exact.split('-')[0] -%}
+{%- set tracker   = upgrade_risky_tracker_links.get(pkg_exact, upgrade_risky_tracker_links.get(pkg_root, '')) -%}
+- `{{ line }}` — [Alpine aports](https://gitlab.alpinelinux.org/alpine/aports/-/issues?scope=all&state=opened&search={{ pkg_exact }}){% if tracker %} · [Upstream]({{ tracker | replace('{pkg}', pkg_exact) }}){% endif +%}
+{% endfor %}
+
+{% endfor %}
+{% else %}
+## ✓ No risky-component changes detected
+
+The upgrade did not touch any packages on the curated risk list
+(session, display_manager, compositor, graphics, udev, kernel, boot,
+core).  Apply to bare metal with normal caution.
+{% endif %}
+
+## Health
+
+- Kernel sync: `{{ _upgrade_health.kernel }}`
+{% if 'needs-reboot' in _upgrade_health.kernel %}
+  - **Reboot required.** New kernel installed, running kernel is older.
+{% endif %}
+
+- Service states:
+{% for line in _upgrade_health.services %}
+  - {{ line }}
+{% endfor %}
+
+- PAM sanity: {{ _upgrade_health.pam }}
+{% if 'missing PAM file' in _upgrade_health.pam %}
+  - **Manual fix needed.** A display-manager PAM service file references
+    a target that no longer exists.  This is exactly the SDDM-regression
+    pattern from `~/bench/alpine/sddm-kde-pam-missing-includes.md`.
+    Re-running `~/bench/alpine/sddm-kde-pam-fix.sh` may resolve it.
+{% endif %}
+
+{% if _upgrade_services_to_restart is defined and _upgrade_services_to_restart | length > 0 %}
+## Services restarted post-upgrade
+
+{% for svc in _upgrade_services_to_restart %}
+- {{ svc }}
+{% endfor %}
+{% endif %}
+
+## Full package delta
+
+### Added / upgraded ({{ _upgrade_diff_added | length }})
+
+```
+{% for line in _upgrade_diff_added %}
+{{ line }}
+{% endfor %}
+```
+
+### Removed / downgraded ({{ _upgrade_diff_removed | length }})
+
+```
+{% for line in _upgrade_diff_removed %}
+{{ line }}
+{% endfor %}
+```
+
+## Rollback
+
+{% if _upgrade_snapshot_full_name is defined %}
+If the system is broken post-upgrade, boot a LiveUSB, unlock the LUKS
+partitions, import the pool, mount the rolled-back rootfs, and
+restore both halves:
+
+```sh
+# Roll the ZFS rootfs back to the pre-upgrade snapshot.
+zfs rollback {{ _upgrade_snapshot_full_name }}
+
+# /boot is on a separate LUKS partition that ZFS snapshots don't
+# cover, so we also need to restore its contents from the tarball
+# captured at snapshot time (otherwise the rolled-back rootfs has
+# old kernel modules but /boot has the new kernel — they mismatch
+# and network/input drivers fail to load on next boot).
+#
+# Assuming rootfs is mounted at /mnt and /boot is mounted at
+# /mnt/boot (adjust paths to match your LiveUSB mount layout):
+tar -xpf /mnt{{ _upgrade_boot_tarball }} -C /mnt
+```
+
+After both restores, unmount and reboot.
+{% else %}
+ZFS snapshot was disabled (`upgrade_snapshot_zfs: false`).  Rollback
+will require restoring from whatever upstream mechanism you use
+(libvirt snapshot, btrfs snapshot, qemu-img diff, etc.).  Note that
+/boot is on a separate LUKS partition; if your alternate mechanism
+doesn't cover it, you'll hit the same kernel/modules mismatch that
+the ZFS-snapshot path solves via the boot tarball.
+{% endif %}
+
+## Raw apk output
+
+```
+{{ _upgrade_apk_output }}
+```
+
+{% if _upgrade_apk_stderr | length > 0 %}
+### apk stderr
+
+```
+{{ _upgrade_apk_stderr }}
+```
+{% endif %}

@@ -1,0 +1,50 @@
+---
+# Walk the upgrade delta and bounce any service whose package changed.
+# Doesn't catch every case — a glibc-equivalent (musl) update really
+# needs a reboot, and we flag that in the health phase rather than
+# trying to bounce every userland service.
+
+- name: Compute upgrade delta (changed package names)
+  ansible.builtin.set_fact:
+    _upgrade_changed_pkgs: >-
+      {%- set before = (_upgrade_state_before | default([])) -%}
+      {%- set after  = (_upgrade_state_after  | default([])) -%}
+      {%- set names = [] -%}
+      {%- for line in after -%}
+        {%- if line not in before -%}
+          {#- strip the trailing -version-release to get the apk name -#}
+          {%- set base = line | regex_replace('-[0-9].*', '') -%}
+          {%- set _ = names.append(base) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ names | unique }}
+
+- name: Determine services to restart
+  ansible.builtin.set_fact:
+    _upgrade_services_to_restart: >-
+      {%- set out = [] -%}
+      {%- for pkg in _upgrade_changed_pkgs -%}
+        {%- if pkg in upgrade_service_restart_map -%}
+          {%- for svc in upgrade_service_restart_map[pkg] -%}
+            {%- if svc not in out -%}{%- set _ = out.append(svc) -%}{%- endif -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+
+- name: Stat affected services
+  ansible.builtin.stat:
+    path: "/etc/init.d/{{ item }}"
+  loop: "{{ _upgrade_services_to_restart }}"
+  register: _upgrade_svc_stat
+
+- name: Restart affected services
+  ansible.builtin.service:
+    name: "{{ item.item }}"
+    state: restarted
+  loop: "{{ _upgrade_svc_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+  register: _upgrade_svc_restart
+  failed_when: false   # log restart failures in the report; don't abort

@@ -112,3 +112,39 @@
     group: root
     mode: "0644"
   when: users_manage_fstab | default(false)
+
+# --- desktop user dotfiles -----------------------------------------
+# Personal terminal + multiplexer config.  Same set on every desktop
+# host so the user gets their normal environment immediately on a
+# fresh install.  Gated on `desktop_user` being defined so server
+# hosts don't get these.
+- name: Deploy ~/.tmux.conf for desktop user
+  # Propagates the canonical /root/.tmux.conf (placed by the common
+  # role) so the desktop user gets the same config without duplicating
+  # the source file in two role file dirs.
+  ansible.builtin.copy:
+    src: /root/.tmux.conf
+    remote_src: true
+    dest: "/home/{{ desktop_user }}/.tmux.conf"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0644"
+  when: desktop_user is defined
+
+- name: Ensure ~/.config/ghostty exists for desktop user
+  ansible.builtin.file:
+    path: "/home/{{ desktop_user }}/.config/ghostty"
+    state: directory
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0755"
+  when: desktop_user is defined
+
+- name: Deploy ~/.config/ghostty/config for desktop user
+  ansible.builtin.copy:
+    src: dot.config-ghostty-config
+    dest: "/home/{{ desktop_user }}/.config/ghostty/config"
+    owner: "{{ desktop_user }}"
+    group: "{{ desktop_user }}"
+    mode: "0644"
+  when: desktop_user is defined

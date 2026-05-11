@@ -1,0 +1,40 @@
+---
+# Tear down GNOME.  Stops + disables gdm, removes /etc/gdm/custom.conf,
+# removes the GNOME package set.  Leaves the cross-DE infrastructure
+# (elogind, eudev, fonts, X11, mesa, etc.) in place — `desktop_base`
+# packages are not touched here.
+#
+# Run before switching to a different DE:
+#
+#   1. Edit host_vars/<host>.yml: set desktop_environment: kde
+#   2. ansible-playbook desktop.yml --tags uninstall_gnome --limit <host>
+#   3. ansible-playbook desktop.yml --limit <host>     # installs KDE
+#
+# The user's chosen-DE data (GNOME config in ~/.config/gnome*,
+# ~/.local/share/gnome*, dconf state) is NOT removed.  If you want a
+# clean wipe of those, do it manually as the desktop user.
+
+- name: Stop gdm (if running)
+  ansible.builtin.service:
+    name: gdm
+    state: stopped
+  failed_when: false
+
+- name: Disable gdm at default runlevel
+  ansible.builtin.command: rc-update del gdm default
+  register: _gnome_gdm_del
+  changed_when: _gnome_gdm_del.rc == 0
+  failed_when:
+    - _gnome_gdm_del.rc != 0
+    - "'is not in the runlevel' not in _gnome_gdm_del.stderr"
+    - "'does not exist' not in _gnome_gdm_del.stderr"
+
+- name: Remove GDM custom.conf override
+  ansible.builtin.file:
+    path: /etc/gdm/custom.conf
+    state: absent
+
+- name: Uninstall GNOME packages
+  community.general.apk:
+    name: "{{ gnome_packages }}"
+    state: absent

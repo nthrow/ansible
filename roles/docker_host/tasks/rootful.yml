@@ -1,0 +1,49 @@
+---
+# Rootful docker: dockerd runs as root, listens on /var/run/docker.sock,
+# users get access by being in the docker group.
+
+- name: Install docker (with openrc subpkg + python lib)
+  community.general.apk:
+    name:
+      - docker
+      - docker-openrc
+      - docker-cli-compose
+      - py3-docker-py     # community.docker module dependency
+    state: present
+
+- name: Install extra docker tooling
+  community.general.apk:
+    name: "{{ docker_extra_packages }}"
+    state: present
+  when: docker_extra_packages | length > 0
+
+- name: Ensure /etc/docker exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render /etc/docker/daemon.json
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart docker
+
+- name: Enable docker
+  ansible.builtin.service:
+    name: docker
+    enabled: true
+    runlevel: default
+    state: started
+
+- name: Add user to docker group
+  ansible.builtin.user:
+    name: "{{ docker_user }}"
+    groups: docker
+    append: true
+  when: docker_user | length > 0

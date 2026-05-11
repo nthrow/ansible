@@ -1,0 +1,71 @@
+---
+# GNOME-specific install + gdm.  Cross-DE prep (udev/elogind/acpid/
+# udisks2/tlp/fonts/portal-core) ran in `desktop_base`.
+
+- name: Install GNOME + apps
+  community.general.apk:
+    name: "{{ gnome_packages }}"
+    state: present
+
+- name: Ensure /etc/gdm exists
+  ansible.builtin.file:
+    path: /etc/gdm
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: GDM greeter config (Wayland enable / disable)
+  ansible.builtin.template:
+    src: custom.conf.j2
+    dest: /etc/gdm/custom.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stat gdm init script
+  ansible.builtin.stat:
+    path: /etc/init.d/gdm
+  register: _gnome_gdm_init
+
+- name: Enable gdm (default runlevel)
+  ansible.builtin.service:
+    name: gdm
+    enabled: true
+    runlevel: default
+    state: started
+  when: _gnome_gdm_init.stat.exists
+
+# ---- default terminal: ghostty -----------------------------------
+# GNOME 50 no longer ships a default terminal in the meta-package and
+# the org.gnome.desktop.default-applications.terminal schema is
+# deprecated-but-widely-respected.  Set it via a system-wide dconf
+# override so any user on a fresh install gets ghostty as default.
+- name: Ensure dconf site db directory exists
+  ansible.builtin.file:
+    path: /etc/dconf/db/site.d
+    state: directory
+    mode: "0755"
+
+- name: Ensure dconf user profile pulls in the site db
+  ansible.builtin.copy:
+    dest: /etc/dconf/profile/user
+    content: |
+      user-db:user
+      system-db:site
+    owner: root
+    group: root
+    mode: "0644"
+  notify: dconf update
+
+- name: Default terminal application = ghostty (dconf system override)
+  ansible.builtin.copy:
+    dest: /etc/dconf/db/site.d/00-default-terminal
+    content: |
+      [org/gnome/desktop/default-applications/terminal]
+      exec='ghostty'
+      exec-arg=''
+    owner: root
+    group: root
+    mode: "0644"
+  notify: dconf update

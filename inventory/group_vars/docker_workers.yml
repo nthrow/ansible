@@ -1,2 +1,7 @@
 ---
 docker_swarm_role: worker
+
+# Swarm requires overlay networks; overlay networks don't work in
+# rootless mode.  Force rootful here so the role's sanity check
+# doesn't bail, and so swarm actually works.
+docker_rootless: false

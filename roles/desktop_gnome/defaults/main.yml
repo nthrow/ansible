@@ -1,0 +1,61 @@
+---
+# GNOME-specific configuration.  Cross-DE bits (elogind, eudev, acpid,
+# udisks2, tlp, mesa, vulkan, fonts, xdg-desktop-portal core, firefox,
+# etc.) live in `desktop_base`.
+
+# GDM display-server preference for the LOGIN GREETER only.  Wayland
+# user sessions remain selectable at the greeter regardless.  Set to
+# false (=> X11 greeter) if you hit greeter-time graphics breakage on
+# real hardware.  Historically GDM's wayland greeter is more robust
+# than KDE's kwin_wayland greeter on Alpine, so default is true.
+gdm_wayland_enable: true
+
+# GNOME meta + gdm + GNOME apps and integration bits.  If a package
+# is also useful in KDE, move it to desktop_base.
+gnome_packages:
+  # Display manager.
+  - gdm
+  - gdm-openrc
+  # GNOME shell + window manager + control center.
+  - gnome
+  - gnome-shell
+  - gnome-control-center
+  - gnome-control-center-lang
+  - gnome-tweaks
+  - mutter
+  - nautilus
+  # GNOME apps — modern set (`loupe`/`papers` replace the eog/evince
+  # legacy pair; `vlc` lives in desktop_base for cross-DE).
+  - loupe               # image viewer
+  - papers              # PDF viewer
+  - file-roller         # archive manager
+  - gnome-calculator
+  - gnome-disk-utility
+  - gnome-keyring
+  - gnome-screenshot
+  - gnome-software
+  - gnome-software-plugin-apk2  # apk backend for GNOME Software
+  - gnome-system-monitor
+  - gnome-text-editor
+  # Codec stack — gstreamer base/good/bad covers most playback paths.
+  - gst-plugins-base
+  - gst-plugins-good
+  - gst-plugins-bad
+  # GVFS mount backends — SMB, NFS, MTP phones, WebDAV, Apple, etc.,
+  # all surfaced in the Files app.
+  - gvfs-afc
+  - gvfs-afp
+  - gvfs-archive
+  - gvfs-avahi
+  - gvfs-cdda
+  - gvfs-dav
+  - gvfs-fuse
+  - gvfs-goa
+  - gvfs-gphoto2
+  - gvfs-mtp
+  - gvfs-nfs
+  - gvfs-smb
+  # Integration: portal backend, polkit auth UI.
+  - polkit-gnome
+  - xdg-desktop-portal-gnome
+  - pinentry-gnome

@@ -1,36 +1,44 @@
 ---
+# KDE-specific configuration.  Cross-DE bits (elogind, eudev, acpid,
+# udisks2, tlp, mesa, vulkan, fonts, xdg-desktop-portal core, firefox,
+# etc.) live in `desktop_base`.
+
 sddm_theme: breeze
 sddm_cursor_theme: breeze_cursors
 
-# KDE Plasma packages, fonts, X11. The dev stack lives in a sibling role
-# (`dev_stack`) so a server playbook could pull just `desktop_kde` for a
-# kiosk-style host without dragging in the toolchain.
+# KDE Plasma + sddm + KDE-only apps and integration bits.  If a
+# package is also useful in GNOME, move it to desktop_base.
 kde_packages:
-  - alacritty
-  - apk-polkit-rs
+  # Display manager.
+  - sddm
+  - sddm-openrc
+  - sddm-breeze
+  - sddm-kcm
+  # Plasma desktop core.
+  - plasma-desktop
+  - plasma-browser-integration
+  - plasma-disks
+  - plasma-firewall
+  - plasma-nm
+  - plasma-pa
+  - plasma-systemmonitor
+  - plasma-thunderbolt
+  - plasma-vault
+  - plasma-workspace-wallpapers
+  - kdeplasma-addons
+  - powerdevil           # KDE's power-management daemon
+  - print-manager
+  - systemsettings
+  # KDE apps.
   - ark
   - audiocd-kio
-  - bluedevil
-  - breeze
-  - breeze-gtk
-  - breeze-icons
-  - dconf-editor
   - dolphin
-  - elogind
-  - elogind-openrc
-  - eudev
   - ffmpegthumbs
-  - firefox
-  - fwupd
-  - fwupd-efi
-  - gparted
-  - gtksourceview4
   - gwenview
   - kate
   - kde-cli-tools
   - kde-gtk-config
   - kdenetwork-filesharing
-  - kdeplasma-addons
   - kdialog
   - kfind
   - kinfocenter
@@ -44,73 +52,18 @@ kde_packages:
   - kunifiedpush
   - kwallet-pam
   - kwrite
-  - libapk2
-  - libnm
-  - libqrencode
-  - maliit-keyboard
-  - mesa-va-gallium
-  - mesa-vulkan-ati
-  - mpv
   - okular
-  - ovmf
-  - pinentry
-  - pinentry-qt
-  - plasma-browser-integration
-  - plasma-desktop
-  - plasma-disks
-  - plasma-firewall
-  - plasma-nm
-  - plasma-pa
-  - plasma-systemmonitor
-  - plasma-thunderbolt
-  - plasma-vault
-  - plasma-workspace-wallpapers
-  - polkit-elogind
-  - polkit-kde-agent-1
-  - power-profiles-provider
-  - powerdevil
-  - powertop
-  - print-manager
-  - sddm
-  - sddm-openrc
-  - sddm-breeze
-  - sddm-kcm
   - spectacle
-  - systemsettings
-  - tlp
-  - tlp-openrc
-  - tlp-rdw
   - totem
-  - udisks2
-  - vulkan-loader
-  - vulkan-tools
-  - xclip
-  - xdg-desktop-portal
+  # KDE Bluetooth integration (uses libbluedevil + breeze-icons —
+  # reverse-deps that previously held breeze-icons during uninstall
+  # because bluedevil wasn't listed here).
+  - bluedevil
+  # Integration: portal backend, polkit auth UI, OSK, theming.
+  - breeze
+  - breeze-gtk
+  - breeze-icons
+  - maliit-keyboard
+  - polkit-kde-agent-1
   - xdg-desktop-portal-kde
-  - xdg-user-dirs
-  - xdg-utils
-  - xf86-input-libinput
-  - xhost
-  - xinit
-  - xorg-server
-  - acpid
-  - acpid-openrc
-  - udisks2-openrc
-
-font_packages:
-  - font-awesome
-  - font-dejavu
-  - font-inconsolata
-  - font-liberation
-  - font-noto
-  - font-noto-cjk
-  - font-noto-emoji
-  - font-noto-extra
-  - font-opensans
-  - font-terminus
-  # font-ubuntu was removed from alpine repos; the nerd variants bundle
-  # Ubuntu glyphs alongside the Nerd Font additions.
-  - font-ubuntu-mono-nerd
-  - font-ubuntu-nerd
-  - msttcorefonts-installer
-  - ocean-sound-theme
+  - pinentry-qt

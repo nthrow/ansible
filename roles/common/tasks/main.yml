@@ -40,6 +40,40 @@
     name: "{{ base_packages }}"
     state: present
 
+# tmux is in base_packages; deploy the shared .tmux.conf for root.
+# Desktop hosts also propagate it to the desktop user via the users
+# role (with remote_src so the file lives in only one place).
+- name: Deploy /root/.tmux.conf
+  ansible.builtin.copy:
+    src: dot.tmux.conf
+    dest: /root/.tmux.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# Default locale: C.UTF-8 is the broadest UTF-8 locale musl supports
+# without alpine-baselayout-data's regional locale files, and many
+# GUI apps (gnome-terminal among them) explicitly refuse to start
+# under the ASCII `C` locale.  Setting in both places so login
+# shells (profile.d) AND PAM-mediated sessions like GDM/SDDM that
+# read /etc/environment pick it up.
+- name: Set system locale via /etc/profile.d
+  ansible.builtin.copy:
+    dest: /etc/profile.d/locale.sh
+    content: |
+      export LANG=C.UTF-8
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Set /etc/environment LANG (for PAM env)
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    regexp: '^LANG='
+    line: 'LANG=C.UTF-8'
+    create: true
+    mode: "0644"
+
 - name: Install kernel packages (bare-metal hosts only)
   community.general.apk:
     name: "{{ kernel_packages }}"

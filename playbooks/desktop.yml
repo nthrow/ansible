@@ -15,10 +15,21 @@
     - firewall
     - grub_efi
     - secureboot
+    - firmware_update
 
     # Desktop-only:
     - networking_desktop
+    # Cross-DE prep — fonts + udev + elogind + acpid + udisks2 + tlp +
+    # mesa + vulkan + xdg-portal core + base apps.  Always runs.
+    - desktop_base
+    # Both DE roles are always *included*; the per-DE install task is
+    # gated by `desktop_environment` inside the role.  This lets the
+    # uninstall tags (`--tags uninstall_kde` / `--tags uninstall_gnome`)
+    # fire even after you've flipped `desktop_environment` to the
+    # other DE — the gate is install-only, not role-inclusion-level.
+    # Default behavior unchanged: only the matching DE's install runs.
     - desktop_kde
+    - desktop_gnome
     - dev_stack
     - flatpak
 

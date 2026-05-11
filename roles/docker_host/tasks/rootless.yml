@@ -1,0 +1,137 @@
+---
+# Rootless docker: dockerd runs as docker_rootless_user, isolated by
+# user namespaces.  No docker group; access is via the user owning the
+# unix socket at $XDG_RUNTIME_DIR/docker.sock.
+#
+# Containers see UID 0 inside their namespace, mapped to the user's
+# subuid range on the host (so a container "root" is a host UID of
+# e.g. 100000, not real root).
+#
+# Limitations: overlay networks don't work, so swarm is unsupported.
+# Privileged ports (<1024) require setcap'd rootlesskit-builtin or
+# explicit binding via the host network namespace.
+
+- name: Validate docker_rootless_user is set
+  ansible.builtin.fail:
+    msg: "docker_rootless: true requires docker_rootless_user to be set"
+  when: docker_rootless_user | length == 0
+
+- name: Install rootless docker packages
+  community.general.apk:
+    name:
+      - docker
+      - docker-cli-compose
+      - docker-rootless-extras
+      - shadow-subids        # newuidmap, newgidmap, /etc/sub{u,g}id
+      - rootlesskit          # user-namespace setup helper used by dockerd-rootless
+      - slirp4netns          # userspace networking (used when no kernel-side rootlesskit)
+      - py3-docker-py        # community.docker module dependency
+    state: present
+
+- name: Install extra docker tooling
+  community.general.apk:
+    name: "{{ docker_extra_packages }}"
+    state: present
+  when: docker_extra_packages | length > 0
+
+# Rootless docker requires cgroups v2 unified hierarchy.  Alpine's
+# OpenRC default is hybrid; we flip it here and ensure the cgroups
+# service runs at boot.
+- name: Set cgroups v2 unified mode in rc.conf
+  ansible.builtin.lineinfile:
+    path: /etc/rc.conf
+    regexp: '^\s*#?\s*rc_cgroup_mode='
+    line: 'rc_cgroup_mode="unified"'
+    state: present
+
+- name: Enable cgroups service at boot
+  ansible.builtin.service:
+    name: cgroups
+    enabled: true
+    runlevel: boot
+
+- name: Stop + disable system docker (running rootless instead)
+  ansible.builtin.service:
+    name: docker
+    enabled: false
+    state: stopped
+  failed_when: false   # service may not yet exist on a fresh box
+
+# /etc/sub{uid,gid} entries authorize the user-namespace mapping.
+# newuidmap reads these to know what host UIDs the user is allowed
+# to map into the container's user namespace.  Without these, dockerd-rootless
+# fails at startup with "newuidmap: write to uid_map failed".
+- name: Allocate subuid range for rootless user
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    regexp: "^{{ docker_rootless_user }}:"
+    line: "{{ docker_rootless_user }}:{{ docker_rootless_subid_start }}:{{ docker_rootless_subid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allocate subgid range for rootless user
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    regexp: "^{{ docker_rootless_user }}:"
+    line: "{{ docker_rootless_user }}:{{ docker_rootless_subid_start }}:{{ docker_rootless_subid_count }}"
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Resolve rootless user UID + home
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ docker_rootless_user }}"
+
+- name: Stash rootless user facts
+  ansible.builtin.set_fact:
+    _docker_rootless_uid: "{{ getent_passwd[docker_rootless_user][1] }}"
+    _docker_rootless_home: "{{ getent_passwd[docker_rootless_user][4] }}"
+
+- name: Ensure rootless docker config dir
+  ansible.builtin.file:
+    path: "{{ _docker_rootless_home }}/.config/docker"
+    state: directory
+    owner: "{{ docker_rootless_user }}"
+    group: "{{ docker_rootless_user }}"
+    mode: "0755"
+
+- name: Render rootless daemon.json
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: "{{ _docker_rootless_home }}/.config/docker/daemon.json"
+    owner: "{{ docker_rootless_user }}"
+    group: "{{ docker_rootless_user }}"
+    mode: "0644"
+  notify: restart docker rootless
+
+- name: Install rootless docker OpenRC service
+  ansible.builtin.template:
+    src: docker-rootless.init.j2
+    dest: /etc/init.d/docker-rootless
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart docker rootless
+
+- name: Enable rootless docker service
+  ansible.builtin.service:
+    name: docker-rootless
+    enabled: true
+    runlevel: default
+    state: started
+
+# Convenience: set DOCKER_HOST so the user gets a working docker CLI
+# without having to remember the socket path.
+- name: Set DOCKER_HOST in rootless user's profile
+  ansible.builtin.lineinfile:
+    path: "{{ _docker_rootless_home }}/.profile"
+    regexp: "^export DOCKER_HOST="
+    line: "export DOCKER_HOST=unix:///run/user/{{ _docker_rootless_uid }}/docker.sock"
+    create: true
+    owner: "{{ docker_rootless_user }}"
+    group: "{{ docker_rootless_user }}"
+    mode: "0644"

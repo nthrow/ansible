@@ -1,0 +1,24 @@
+---
+# Two paths:
+#   - default run: install GNOME + gdm if desktop_environment == "gnome"
+#   - --tags uninstall_gnome: tear down GNOME regardless of desktop_environment
+#
+# The `never` tag on the uninstall path means it's skipped by default;
+# you have to explicitly opt in.  The desktop_environment gate is on
+# install only, so you can `--tags uninstall_gnome` AFTER flipping the
+# var to "kde" and the uninstall still fires.
+
+- name: Install GNOME
+  ansible.builtin.include_tasks: install.yml
+  when: desktop_environment == "gnome"
+  tags: [install]
+
+- name: Uninstall GNOME
+  ansible.builtin.include_tasks:
+    file: uninstall.yml
+    # `apply` propagates the tag to the included tasks too; without it,
+    # only the include itself matches `--tags uninstall_gnome` and the
+    # children are silently filtered out.
+    apply:
+      tags: [uninstall_gnome]
+  tags: [uninstall_gnome, never]

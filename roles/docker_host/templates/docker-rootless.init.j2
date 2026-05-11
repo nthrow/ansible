@@ -1,0 +1,48 @@
+#!/sbin/openrc-run
+# Managed by ansible (roles/docker_host) — do not edit by hand.
+#
+# System OpenRC service that runs dockerd-rootless as {{ docker_rootless_user }}.
+# We use supervise-daemon (same supervisor Alpine's own user-mode init uses)
+# but launched at the system level so the daemon comes up at boot without
+# requiring an interactive login on the rootless user.
+
+name="Rootless Docker Daemon"
+description="dockerd-rootless for {{ docker_rootless_user }}"
+
+# Resolved from the host at script-load.  The user must exist before
+# the service is enabled; ansible installs subuid/subgid entries first.
+_user="{{ docker_rootless_user }}"
+_uid="$(id -u "$_user")"
+_gid="$(id -g "$_user")"
+_home="$(getent passwd "$_user" | cut -d: -f6)"
+_runtime_dir="/run/user/$_uid"
+
+supervisor=supervise-daemon
+command="/usr/bin/dockerd-rootless"
+command_user="$_user:$_user"
+
+# Env passed through to dockerd-rootless.  XDG_RUNTIME_DIR is where the
+# daemon creates docker.sock; without it dockerd-rootless falls back to
+# /tmp which docker clients won't find.  HOME is needed for the daemon
+# to read ~/.config/docker/daemon.json.  PATH is set explicitly because
+# supervise-daemon doesn't inherit the calling shell's PATH.
+supervise_daemon_args="
+    --env XDG_RUNTIME_DIR=$_runtime_dir
+    --env HOME=$_home
+    --env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    --stdout /var/log/docker-rootless.log
+    --stderr /var/log/docker-rootless.log
+"
+
+depend() {
+    need net localmount cgroups
+    after firewall
+}
+
+start_pre() {
+    # /run/user/$UID is normally created by elogind on login; on a
+    # headless box with no interactive sessions it doesn't exist.
+    # Create it before the daemon starts.
+    checkpath -d -m 0700 -o "$_uid:$_gid" "$_runtime_dir"
+    checkpath -f -m 0644 -o "$_uid:$_gid" /var/log/docker-rootless.log
+}

@@ -1,13 +1,3 @@
-[General]
-# Force X11 for the GREETER. Plasma Wayland is still selectable at the
-# login screen for the user session — these are independent. The
-# wayland-greeter (kwin_wayland launched by sddm) currently dies fast
-# on Alpine + real GPUs (validated broken on AMDGPU; works on virtio-
-# gpu in VMs). X11 greeter has no such issue. Until kwin_wayland
-# greeter init on real hardware is fixed upstream, X11 is the safer
-# default. Drop this line if upstream lands a fix.
-DisplayServer=x11
-
 [Theme]
 Current={{ sddm_theme }}
 CursorTheme={{ sddm_cursor_theme }}

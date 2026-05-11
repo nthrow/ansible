@@ -1,0 +1,13 @@
+---
+# Snapshot the apk world at a given phase.  We capture name + version
+# in one line per package, then diff before/after.
+
+- name: "Capture apk state ({{ capture_phase }})"
+  ansible.builtin.shell: |
+    apk info -v | sort
+  register: _upgrade_state
+  changed_when: false
+
+- name: "Stash apk state ({{ capture_phase }})"
+  ansible.builtin.set_fact:
+    "_upgrade_state_{{ capture_phase }}": "{{ _upgrade_state.stdout_lines }}"

@@ -1,0 +1,45 @@
+---
+# KDE-specific install + sddm.  Cross-DE prep (udev/elogind/acpid/
+# udisks2/tlp/fonts/portal-core) ran in `desktop_base`.
+
+- name: Install KDE Plasma + apps
+  community.general.apk:
+    name: "{{ kde_packages }}"
+    state: present
+
+- name: SDDM theme + greeter override
+  ansible.builtin.template:
+    src: sddm.conf.j2
+    dest: /etc/sddm.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Stat sddm init script
+  ansible.builtin.stat:
+    path: /etc/init.d/sddm
+  register: _kde_sddm_init
+
+- name: Enable sddm (default runlevel)
+  ansible.builtin.service:
+    name: sddm
+    enabled: true
+    runlevel: default
+    state: started
+  when: _kde_sddm_init.stat.exists
+
+# ---- default terminal: ghostty -----------------------------------
+# KDE reads system-wide defaults from /etc/xdg/.  Setting
+# TerminalApplication in kdeglobals there makes ghostty the default
+# for any user on a fresh install (overridable via per-user
+# ~/.config/kdeglobals).
+- name: Default terminal application = ghostty (system kdeglobals)
+  community.general.ini_file:
+    path: /etc/xdg/kdeglobals
+    section: General
+    option: TerminalApplication
+    value: ghostty
+    owner: root
+    group: root
+    mode: "0644"
+    create: true

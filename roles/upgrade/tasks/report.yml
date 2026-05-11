@@ -1,0 +1,71 @@
+---
+# Render markdown report on the target, then fetch it back to the
+# controller for history.
+
+- name: Compute upgrade diff for the report
+  # Real-upgrade path: take the set-difference of after/before apk states.
+  # Dry-run path: use the parsed simulate output (see tasks/upgrade.yml),
+  # because in dry-run the before/after snapshots are identical.
+  ansible.builtin.set_fact:
+    _upgrade_diff_added: >-
+      {{ _upgrade_dryrun_added if (upgrade_dry_run | bool)
+         else (_upgrade_state_after | difference(_upgrade_state_before)) }}
+    _upgrade_diff_removed: >-
+      {{ _upgrade_dryrun_removed if (upgrade_dry_run | bool)
+         else (_upgrade_state_before | difference(_upgrade_state_after)) }}
+
+- name: Categorize risky changes
+  ansible.builtin.set_fact:
+    _upgrade_risky_hits: >-
+      {%- set hits = {} -%}
+      {%- for category, patterns in upgrade_risky_packages.items() -%}
+        {%- set matched = [] -%}
+        {%- for line in _upgrade_diff_added -%}
+          {%- set name = line | regex_replace('-[0-9].*', '') -%}
+          {%- for pat in patterns -%}
+            {%- if pat.endswith('-*') -%}
+              {%- set prefix = pat[:-1] -%}
+              {%- if name.startswith(prefix) -%}
+                {%- set _ = matched.append(line) -%}
+              {%- endif -%}
+            {%- elif name == pat -%}
+              {%- set _ = matched.append(line) -%}
+            {%- endif -%}
+          {%- endfor -%}
+        {%- endfor -%}
+        {%- if matched | length > 0 -%}
+          {%- set _ = hits.update({category: matched | unique}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ hits }}
+
+- name: Render markdown report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ upgrade_report_remote_dir }}/{{ ansible_date_time.iso8601_basic_short }}.md"
+    owner: root
+    group: root
+    mode: "0644"
+  register: _upgrade_report_path
+
+- name: Ensure local report dir exists (controller side)
+  ansible.builtin.file:
+    path: "{{ upgrade_report_local_dir | expanduser }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Fetch report to controller
+  ansible.builtin.fetch:
+    src: "{{ _upgrade_report_path.dest }}"
+    dest: "{{ upgrade_report_local_dir | expanduser }}/{{ inventory_hostname }}-{{ ansible_date_time.iso8601_basic_short }}.md"
+    flat: true
+
+- name: Show report path
+  ansible.builtin.debug:
+    msg: |
+      Upgrade report:
+        on host:    {{ _upgrade_report_path.dest }}
+        controller: {{ upgrade_report_local_dir }}/{{ inventory_hostname }}-{{ ansible_date_time.iso8601_basic_short }}.md

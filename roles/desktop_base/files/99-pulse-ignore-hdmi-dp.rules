@@ -1,0 +1,34 @@
+# Managed by ~/bench/alpine/ansible/roles/desktop_base — do not edit by hand.
+#
+# Hide GPU HDMI/DisplayPort audio outputs from PulseAudio.
+#
+# This laptop's GPU HDA function (which carries HDMI and DP audio) sits at
+# PCI 0000:c4:00.1.  Setting PULSE_IGNORE=1 on every sound-subsystem device
+# whose parent chain includes that PCI address makes the card invisible to
+# module-udev-detect — it never appears as a sink in the Plasma audio
+# applet, never gets auto-selected on BT headphone disconnect, etc.
+#
+# Verify the rule is active:
+#   udevadm info --query=property --path=/sys/class/sound/card0 | grep PULSE_IGNORE
+# (or inspect /run/udev/data/+sound:card0 directly)
+#
+# To RE-ENABLE HDMI/DP audio (e.g. docked to a friend's TV with good speakers):
+#   1. Comment out or delete this file.
+#   2. Reload + retrigger udev so PA picks the card back up:
+#        doas udevadm control --reload-rules
+#        doas udevadm trigger --subsystem-match=sound --action=add
+#      (Or just reboot.)
+#
+# Portability note: the PCI address is hardware-specific (ThinkPad P14s Gen5
+# AMD).  On a different machine, find the GPU's HDA function with
+# `lspci -nn | grep -i audio` and look for the entry whose PCI device shares
+# the same bus/slot as the VGA controller — that's the HDMI/DP audio path.
+# Substitute that address into the KERNELS match below.
+#
+# History: the previous version matched on ATTRS{id}=="HDMI*"/"*DP*"/etc.,
+# but this hardware's ALSA card IDs are generic ("Generic", "Generic_1",
+# "acp63"), so those patterns never matched anything and the rule was a
+# silent no-op.  Matching by PCI bus address via KERNELS is the reliable
+# selector here.
+
+SUBSYSTEM=="sound", KERNELS=="0000:c4:00.1", ENV{PULSE_IGNORE}="1"

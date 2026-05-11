@@ -1,0 +1,46 @@
+---
+# ZFS rollback target.  Cheap (CoW), fast, and recoverable from a
+# LiveUSB if the upgrade wedges userland.
+#
+# CAVEAT: /boot lives on a SEPARATE LUKS partition (per bootstrap.sh's
+# disk layout), so the ZFS snapshot alone does NOT cover the kernel
+# image + initramfs that apk just wrote there.  A bare `zfs rollback`
+# would put the rootfs back to the old kernel-module set but /boot
+# still has the new vmlinuz+initramfs — the kernel would boot a kernel
+# whose /lib/modules/<ver>/ doesn't exist, and network/input drivers
+# fail to load.
+#
+# To make rollback actually safe we tar /boot to a path on the rpool
+# BEFORE taking the snapshot, so the tarball is itself snapshotted.
+# Rollback recipe (from a LiveUSB):
+#   zfs rollback {{ upgrade_snapshot_dataset }}@{{ upgrade_snapshot_tag }}
+#   tar -xpf {{ upgrade_report_remote_dir }}/boot-{{ upgrade_snapshot_tag }}.tar -C /<mounted-rootfs>/
+
+- name: Ensure upgrade-report dir exists (also stashes /boot tarball)
+  ansible.builtin.file:
+    path: "{{ upgrade_report_remote_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Tar /boot for rollback (/boot is on a separate LUKS partition not covered by ZFS snapshot)
+  ansible.builtin.command: >
+    tar -cpf {{ upgrade_report_remote_dir }}/boot-{{ upgrade_snapshot_tag }}.tar
+        -C / boot
+  register: _upgrade_boot_tar
+  changed_when: _upgrade_boot_tar.rc == 0
+
+- name: Take ZFS snapshot (includes the /boot tarball we just wrote)
+  ansible.builtin.command: >
+    zfs snapshot {{ upgrade_snapshot_dataset }}@{{ upgrade_snapshot_tag }}
+  register: _upgrade_zfs_snap
+  changed_when: _upgrade_zfs_snap.rc == 0
+  failed_when:
+    - _upgrade_zfs_snap.rc != 0
+    - "'already exists' not in _upgrade_zfs_snap.stderr"
+
+- name: Note snapshot + boot tarball for the report
+  ansible.builtin.set_fact:
+    _upgrade_snapshot_full_name: "{{ upgrade_snapshot_dataset }}@{{ upgrade_snapshot_tag }}"
+    _upgrade_boot_tarball: "{{ upgrade_report_remote_dir }}/boot-{{ upgrade_snapshot_tag }}.tar"

@@ -1,0 +1,32 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Refreshes LVFS metadata and writes a JSON status report for monitoring.
+# Does NOT apply firmware updates — that's a deliberate operator action.
+set -eu
+
+DEST="{{ firmware_update_report_path }}"
+TMP=$(mktemp -t fw-report.XXXXXX)
+trap 'rm -f "$TMP"' EXIT
+
+# Refresh LVFS metadata. Tolerate transient failures (no internet, LVFS
+# down). The cached metadata from a prior successful refresh is still
+# usable for get-updates below.
+fwupdmgr refresh --force >/dev/null 2>&1 || true
+
+# fwupdmgr exits non-zero when there's nothing to update; tolerate that
+# and emit an empty Devices list so the report shape stays stable.
+DEVICES=$(fwupdmgr get-devices --json 2>/dev/null || echo 'null')
+UPDATES=$(fwupdmgr get-updates --json 2>/dev/null || echo '{"Devices":[]}')
+
+cat > "$TMP" <<EOF
+{
+  "generated_at": "$(date -u +%FT%TZ)",
+  "host": "$(hostname)",
+  "devices": $DEVICES,
+  "pending_updates": $UPDATES
+}
+EOF
+
+mv -f "$TMP" "$DEST"
+chmod 0644 "$DEST"
+trap - EXIT

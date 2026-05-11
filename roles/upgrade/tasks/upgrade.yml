@@ -1,0 +1,48 @@
+---
+# The actual upgrade.  Two modes:
+#   - upgrade_dry_run=true: simulate only, capture what would change
+#   - upgrade_dry_run=false (default): real upgrade
+
+# Single task instead of two parallel `when:`-gated tasks — when a
+# task is skipped, ansible still registers a skip-dict in the named
+# variable, which would clobber the other task's stdout result.
+- name: Run apk upgrade ({{ 'simulate' if (upgrade_dry_run | bool) else 'real' }})
+  ansible.builtin.command: "apk upgrade --no-progress{{ ' --simulate' if (upgrade_dry_run | bool) else '' }}"
+  register: _upgrade_apk_run
+  changed_when:
+    - not (upgrade_dry_run | bool)
+    - "'Upgrading' in _upgrade_apk_run.stdout or 'OK:' in _upgrade_apk_run.stdout"
+
+- name: Stash apk output for the report
+  ansible.builtin.set_fact:
+    _upgrade_apk_output: "{{ _upgrade_apk_run.stdout }}"
+    _upgrade_apk_stderr: "{{ _upgrade_apk_run.stderr }}"
+
+# In dry-run mode the before/after `apk info -v` snapshots are identical
+# (simulate doesn't install anything), so the standard set-difference
+# diff is empty and the risky-component categorizer has nothing to chew
+# on.  Parse the simulate output's `(N/M) Upgrading|Installing|Purging`
+# lines into the same `name-version` format the categorizer expects.
+- name: Parse simulate output into would-change delta (dry-run only)
+  # For each `Upgrading X (old -> new)` we emit BOTH `A X-new` AND
+  # `R X-old`, so the dry-run added/removed counts match the
+  # real-upgrade set-diff semantics (a pkg upgrade = 1 add + 1
+  # remove).  Otherwise dry-run would report `added=N removed=0`
+  # while the same upgrade later reports `added=N removed=N`.
+  ansible.builtin.shell:
+    cmd: |
+      sed -nE '
+        s/^\( *[0-9]+\/[0-9]+\) Upgrading ([^ ]+) \(([^ ]+) -> ([^)]+)\)$/A \1-\3\nR \1-\2/p
+        s/^\( *[0-9]+\/[0-9]+\) Installing ([^ ]+) \(([^)]+)\)$/A \1-\2/p
+        s/^\( *[0-9]+\/[0-9]+\) (Purging|Removing) ([^ ]+) \(([^)]+)\)$/R \2-\3/p
+      '
+    stdin: "{{ _upgrade_apk_output }}"
+  register: _upgrade_dryrun_parsed
+  changed_when: false
+  when: upgrade_dry_run | bool
+
+- name: Stash dry-run delta as added/removed lists
+  ansible.builtin.set_fact:
+    _upgrade_dryrun_added: "{{ _upgrade_dryrun_parsed.stdout_lines | select('match', '^A ') | map('regex_replace', '^A ', '') | list }}"
+    _upgrade_dryrun_removed: "{{ _upgrade_dryrun_parsed.stdout_lines | select('match', '^R ') | map('regex_replace', '^R ', '') | list }}"
+  when: upgrade_dry_run | bool

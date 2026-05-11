@@ -1,53 +1,32 @@
 ---
-- name: Install docker (with openrc subpkg + python lib)
-  community.general.apk:
-    name:
-      - docker
-      - docker-openrc
-      - docker-cli-compose
-      - py3-docker-py     # community.docker module dependency
-    state: present
+# Sanity-check before doing any work: rootless + swarm is broken.
+# Overlay networks don't work in rootless mode and swarm needs them
+# for inter-node communication, so this combination is non-functional.
+# We hard-fail rather than silently flipping rootless off, because the
+# whole point of an explicit `docker_rootless: true` is the security
+# posture — silently downgrading would be a footgun.
+- name: Reject rootless + swarm combination
+  ansible.builtin.fail:
+    msg: |
+      docker_rootless: true is incompatible with docker_swarm_role={{ docker_swarm_role }}.
+      Overlay networks do not work in rootless docker, so swarm is non-functional.
+      Set docker_rootless: false on this host (group_vars/docker_managers.yml or
+      docker_workers.yml already do this for the swarm groups).
+  when:
+    - docker_rootless | bool
+    - docker_swarm_role != "none"
 
-- name: Install extra docker tooling
-  community.general.apk:
-    name: "{{ docker_extra_packages }}"
-    state: present
-  when: docker_extra_packages | length > 0
+- name: Install rootful docker
+  ansible.builtin.include_tasks: rootful.yml
+  when: not (docker_rootless | bool)
 
-- name: Ensure /etc/docker exists
-  ansible.builtin.file:
-    path: /etc/docker
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Render /etc/docker/daemon.json
-  ansible.builtin.template:
-    src: daemon.json.j2
-    dest: /etc/docker/daemon.json
-    owner: root
-    group: root
-    mode: "0644"
-  notify: restart docker
-
-- name: Enable docker
-  ansible.builtin.service:
-    name: docker
-    enabled: true
-    runlevel: default
-    state: started
+- name: Install rootless docker
+  ansible.builtin.include_tasks: rootless.yml
+  when: docker_rootless | bool
 
 # Apply daemon.json before any swarm operation runs.
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
-
-- name: Add user to docker group
-  ansible.builtin.user:
-    name: "{{ docker_user }}"
-    groups: docker
-    append: true
-  when: docker_user | length > 0
 
 - name: Configure swarm
   ansible.builtin.include_tasks: swarm.yml

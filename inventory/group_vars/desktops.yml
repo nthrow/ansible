@@ -17,6 +17,12 @@ zfs_datasets_base:
 zfs_datasets_desktop:
   - { name: "{{ zfs_pool }}/ROOT/home",   mountpoint: legacy, canmount: on  }
 
+# Desktop environment.  `kde` (default) or `gnome`.  Drives which
+# per-DE role runs in playbooks/desktop.yml.  Override per-host in
+# inventory/host_vars/<host>.yml if you want a different DE on a
+# specific machine.
+desktop_environment: kde
+
 # Desktop user.
 desktop_user: alice
 desktop_user_shell: /usr/bin/fish
@@ -25,7 +31,7 @@ desktop_user_groups:
   - wheel
   - audio
   - video
-  - input
+  - input          # required for some KDE input devices (touchpad, gamepad)
   - netdev
   - plugdev
   - docker

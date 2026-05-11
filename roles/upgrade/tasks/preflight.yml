@@ -1,0 +1,45 @@
+---
+# Sanity checks that catch the easy mistakes before we touch anything.
+
+- name: Capture host facts for the report
+  ansible.builtin.set_fact:
+    _upgrade_started_at: "{{ ansible_date_time.iso8601 }}"
+    _upgrade_kernel_running: "{{ ansible_kernel }}"
+    _upgrade_alpine_version: "{{ ansible_distribution_version | default('unknown') }}"
+
+- name: Check disk space on /
+  ansible.builtin.shell: |
+    set -e
+    df -BM / | awk 'NR==2 {gsub(/M/,"",$4); print $4}'
+  register: _upgrade_root_free_mb
+  changed_when: false
+
+- name: Fail if < 1 GiB free on /
+  ansible.builtin.fail:
+    msg: |
+      Only {{ _upgrade_root_free_mb.stdout }} MiB free on /.  apk upgrade
+      will write hundreds of MiB of new package content; run a cleanup
+      first (`apk cache clean`, `journalctl --vacuum`, etc).
+  when: _upgrade_root_free_mb.stdout | int < 1024
+
+- name: Ensure report dir exists
+  ansible.builtin.file:
+    path: "{{ upgrade_report_remote_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Refresh apk indexes
+  ansible.builtin.command: apk update
+  changed_when: false
+  register: _upgrade_apk_update
+
+- name: Show pending update count
+  ansible.builtin.shell: apk version | grep -c '<' || true
+  register: _upgrade_pending_count
+  changed_when: false
+
+- name: Pending updates summary
+  ansible.builtin.debug:
+    msg: "{{ _upgrade_pending_count.stdout | default('0') }} package(s) have updates available."

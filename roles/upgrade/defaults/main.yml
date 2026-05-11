@@ -1,0 +1,167 @@
+---
+# Set true to do a no-op `apk upgrade --simulate` and just produce the
+# report.  Useful as a first pass when reviewing what's pending in
+# staging without committing to it.
+upgrade_dry_run: false
+
+# ZFS snapshot before upgrade.  Rollback target if anything breaks.
+# Set false if the host isn't on ZFS or you've snapshotted upstream
+# via libvirt/virsh.
+upgrade_snapshot_zfs: true
+upgrade_snapshot_dataset: "{{ zfs_pool | default('rpool') }}/ROOT/alpine"
+# Snapshot name uses an ansible-supplied UTC timestamp.  Keep it
+# explicit so you can find it again from `zfs list -t snapshot`.
+upgrade_snapshot_tag: "pre-upgrade-{{ ansible_date_time.iso8601_basic_short }}"
+
+# Where the report lands on the target host.  The controller fetches
+# it back to {{ upgrade_report_local_dir }}/ for history.
+upgrade_report_remote_dir: /var/log/alpine-upgrade
+upgrade_report_local_dir: "~/bench/alpine/upgrade-reports"
+
+# Services to bounce post-upgrade if their package was touched.
+# Mapping: package name → list of services to restart.  Anything
+# matched here gets restarted in the order it appears.
+upgrade_service_restart_map:
+  dbus:        [dbus]
+  elogind:     [elogind]
+  sddm:        [sddm]
+  gdm:         [gdm]
+  networkmanager: [networkmanager]
+  docker:      [docker]
+  openssh:     [sshd]
+  chrony:      [chronyd]
+  tlp:         [tlp]
+  udev-init-scripts: [udev]
+
+# === Risky packages ============================================
+# Categories used in the report.  Each entry: list of `apk` package
+# name prefixes (matched as exact OR as `pkg-anything`).  When any
+# match appears in the upgrade delta, the report calls it out.
+#
+# This list is the answer to "things that have bitten us / are
+# load-bearing for desktop usability".  Add entries as new pain
+# points emerge — that's the whole point of this playbook.
+upgrade_risky_packages:
+  session:
+    - elogind
+    - elogind-openrc
+    - polkit
+    - polkit-elogind
+    - dbus
+    - dbus-x11
+    # PAM modules + service files — any change here can lock you
+    # out of the greeter (see sddm-kde-pam-missing-includes regression).
+    - linux-pam
+    - pam-*
+  display_manager:
+    - sddm
+    - sddm-openrc
+    - sddm-breeze
+    - sddm-kcm
+    - gdm
+    - gdm-openrc
+  compositor:
+    - plasma-desktop
+    - plasma-workspace
+    - kwin
+    - kwin-x11
+    - kwin-wayland
+    - gnome-shell
+    - mutter
+    - kdeplasma-addons
+    - kde-cli-tools
+  graphics:
+    - xorg-server
+    - xf86-input-*
+    - xf86-video-*
+    - mesa
+    - mesa-*
+    - vulkan-loader
+    - vulkan-*
+    - libdrm
+    - libdrm-*
+    - linux-firmware-amd
+    - linux-firmware-amdgpu
+    - linux-firmware-intel
+  udev:
+    - eudev
+    - eudev-*
+    - udev-init-scripts
+    - udev-init-scripts-openrc
+  kernel:
+    - linux-lts
+    - linux-edge
+    - linux-headers
+    - linux-firmware-*
+    - mkinitfs
+  boot:
+    - grub
+    - grub-efi
+    - efibootmgr
+    - kernel-hooks
+    - sbsigntool
+    - sbctl
+  core:
+    - musl
+    - busybox
+    - openrc
+    - openssl
+    - openssh
+
+# === Issue-tracker links =======================================
+# Per-package upstream issue tracker URL patterns.  Used in the
+# upgrade report to render search links next to each risky-package
+# hit so triage takes one click instead of a separate search.
+#
+# Lookup logic in the template:
+#   1. Exact name match against this map.
+#   2. If no exact match, falls back to the first dash-separated
+#      token (so `mesa-egl` falls through to `mesa`, `pam-foo`
+#      falls through to `pam`).
+#   3. If still no match, only the Alpine aports link is rendered
+#      (which is universal — always shown).
+#
+# `{pkg}` is substituted with the actual package name at render
+# time.  Add entries as you encounter new risky packages.
+upgrade_risky_tracker_links:
+  # session
+  elogind:          "https://github.com/elogind/elogind/issues?q=is%3Aissue+{pkg}"
+  linux-pam:        "https://github.com/linux-pam/linux-pam/issues?q=is%3Aissue+{pkg}"
+  pam:              "https://github.com/linux-pam/linux-pam/issues?q=is%3Aissue+{pkg}"
+  dbus:             "https://gitlab.freedesktop.org/dbus/dbus/-/issues?search={pkg}"
+  polkit:           "https://gitlab.freedesktop.org/polkit/polkit/-/issues?search={pkg}"
+  # display_manager
+  sddm:             "https://github.com/sddm/sddm/issues?q=is%3Aissue+{pkg}"
+  gdm:              "https://gitlab.gnome.org/GNOME/gdm/-/issues?search={pkg}"
+  # compositor
+  kwin:             "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  plasma-desktop:   "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  plasma-workspace: "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  plasma:           "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  kdeplasma-addons: "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  kde-cli-tools:    "https://bugs.kde.org/buglist.cgi?quicksearch={pkg}"
+  gnome-shell:      "https://gitlab.gnome.org/GNOME/gnome-shell/-/issues?search={pkg}"
+  mutter:           "https://gitlab.gnome.org/GNOME/mutter/-/issues?search={pkg}"
+  # graphics
+  mesa:             "https://gitlab.freedesktop.org/mesa/mesa/-/issues?search={pkg}"
+  libdrm:           "https://gitlab.freedesktop.org/mesa/drm/-/issues?search={pkg}"
+  vulkan-loader:    "https://github.com/KhronosGroup/Vulkan-Loader/issues?q=is%3Aissue+{pkg}"
+  vulkan:           "https://github.com/KhronosGroup/Vulkan-Loader/issues?q=is%3Aissue+{pkg}"
+  xorg-server:      "https://gitlab.freedesktop.org/xorg/xserver/-/issues?search={pkg}"
+  # udev
+  eudev:            "https://github.com/eudev-project/eudev/issues?q=is%3Aissue+{pkg}"
+  # kernel
+  linux-lts:        "https://bugzilla.kernel.org/buglist.cgi?quicksearch={pkg}"
+  linux-headers:    "https://bugzilla.kernel.org/buglist.cgi?quicksearch={pkg}"
+  linux-firmware:   "https://gitlab.com/kernel-firmware/linux-firmware/-/issues?search={pkg}"
+  mkinitfs:         "https://gitlab.alpinelinux.org/alpine/mkinitfs/-/issues?scope=all&state=opened&search={pkg}"
+  # boot
+  grub:             "https://savannah.gnu.org/bugs/?group=grub"
+  sbctl:            "https://github.com/Foxboron/sbctl/issues?q=is%3Aissue+{pkg}"
+  efibootmgr:       "https://github.com/rhboot/efibootmgr/issues?q=is%3Aissue+{pkg}"
+  # core
+  musl:             "https://www.openwall.com/lists/musl/"
+  busybox:          "https://bugs.busybox.net/buglist.cgi?quicksearch={pkg}"
+  openrc:           "https://github.com/OpenRC/openrc/issues?q=is%3Aissue+{pkg}"
+  openssh:          "https://bugzilla.mindrot.org/buglist.cgi?quicksearch={pkg}"
+  openssl:          "https://github.com/openssl/openssl/issues?q=is%3Aissue+{pkg}"

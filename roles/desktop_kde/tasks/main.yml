@@ -1,69 +1,24 @@
 ---
-- name: Install KDE Plasma
-  community.general.apk:
-    name: "{{ kde_packages }}"
-    state: present
+# Two paths:
+#   - default run: install KDE + sddm if desktop_environment == "kde"
+#   - --tags uninstall_kde: tear down KDE regardless of desktop_environment
+#
+# The `never` tag on the uninstall path means it's skipped by default;
+# you have to explicitly opt in.  The desktop_environment gate is on
+# install only, so you can `--tags uninstall_kde` AFTER flipping the
+# var to "gnome" and the uninstall still fires.
 
-- name: Install fonts
-  community.general.apk:
-    name: "{{ font_packages }}"
-    state: present
+- name: Install KDE
+  ansible.builtin.include_tasks: install.yml
+  when: desktop_environment == "kde"
+  tags: [install]
 
-- name: SDDM theme
-  ansible.builtin.template:
-    src: sddm.conf.j2
-    dest: /etc/sddm.conf
-    owner: root
-    group: root
-    mode: "0644"
-
-# Alpine boots with busybox `mdev` populating /dev, but KDE/elogind
-# require eudev for proper udev-rule processing (in particular
-# /usr/lib/udev/rules.d/71-seat.rules tags DRM devices `master-of-seat`,
-# which is what makes elogind report CanGraphical=true on seat0 — and
-# SDDM checks that property before showing a greeter). Switch sysinit
-# from mdev to the eudev service stack. This is a long-standing Alpine
-# default, not a regression — desktops always need this swap.
-
-- name: Remove mdev from sysinit (replaced by udev for proper rule processing)
-  ansible.builtin.command: rc-update del mdev sysinit
-  register: _kde_mdev_del
-  changed_when: _kde_mdev_del.rc == 0
-  failed_when:
-    - _kde_mdev_del.rc != 0
-    - "'is not in the runlevel' not in _kde_mdev_del.stderr"
-    - "'does not exist' not in _kde_mdev_del.stderr"
-
-- name: Enable udev openrc services in sysinit
-  ansible.builtin.service:
-    name: "{{ item }}"
-    enabled: true
-    runlevel: sysinit
-  loop:
-    - udev
-    - udev-trigger
-    - udev-settle
-
-- name: Stat desktop-related init scripts
-  ansible.builtin.stat:
-    path: "/etc/init.d/{{ item }}"
-  loop: [sddm, elogind, acpid, udisks2, cgroups]
-  register: _desktop_inits
-
-- name: Enable desktop-related services (default runlevel)
-  ansible.builtin.service:
-    name: "{{ item.item }}"
-    enabled: true
-    runlevel: default
-    state: started
-  loop: "{{ _desktop_inits.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-  when: item.stat.exists
-
-- name: Enable tlp at boot
-  ansible.builtin.service:
-    name: tlp
-    enabled: true
-    runlevel: boot
-    state: started
+- name: Uninstall KDE
+  ansible.builtin.include_tasks:
+    file: uninstall.yml
+    # `apply` propagates the tag to the included tasks too; without it,
+    # only the include itself matches `--tags uninstall_kde` and the
+    # children are silently filtered out.
+    apply:
+      tags: [uninstall_kde]
+  tags: [uninstall_kde, never]

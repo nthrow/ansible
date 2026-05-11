@@ -1,0 +1,41 @@
+---
+# Top-level dispatch.  Each phase is its own file so it's easy to
+# run a subset interactively (`ansible-playbook ... --tags snapshot`).
+
+- name: Preflight checks
+  ansible.builtin.include_tasks: preflight.yml
+  tags: [preflight, always]
+
+- name: Pre-upgrade ZFS snapshot
+  ansible.builtin.include_tasks: snapshot.yml
+  when: upgrade_snapshot_zfs | bool
+  tags: [snapshot]
+
+- name: Capture installed-package state (before)
+  ansible.builtin.include_tasks: capture-state.yml
+  vars:
+    capture_phase: before
+  tags: [upgrade, report]
+
+- name: Run apk upgrade
+  ansible.builtin.include_tasks: upgrade.yml
+  tags: [upgrade]
+
+- name: Capture installed-package state (after)
+  ansible.builtin.include_tasks: capture-state.yml
+  vars:
+    capture_phase: after
+  tags: [upgrade, report]
+
+- name: Restart services whose packages changed
+  ansible.builtin.include_tasks: restart-services.yml
+  when: not (upgrade_dry_run | bool)
+  tags: [upgrade, services]
+
+- name: Health checks
+  ansible.builtin.include_tasks: health.yml
+  tags: [health, report]
+
+- name: Render + fetch report
+  ansible.builtin.include_tasks: report.yml
+  tags: [report, always]

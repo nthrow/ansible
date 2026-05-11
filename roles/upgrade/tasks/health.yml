@@ -1,0 +1,73 @@
+---
+# Post-upgrade smoke test.  The point isn't to catch everything —
+# that's what the manual VM-poking step is for — but to surface the
+# common things people forget to check.
+
+- name: Reboot-needed check (running kernel vs installed)
+  # The kernel-modules dir name in /lib/modules is the authoritative
+  # "installed kernel" identifier (same format as `uname -r`).  Using
+  # this instead of parsing `apk info -v linux-lts` because apk's
+  # multi-line output format isn't stable and the previous parser was
+  # grabbing the size line ("151 MiB") instead of the version.
+  ansible.builtin.shell: |
+    set -e
+    running="$(uname -r)"
+    installed="$(ls -1 /lib/modules/ 2>/dev/null | sort -V | tail -1)"
+    if [ -z "$installed" ]; then
+        echo "no-kernel-modules-installed"
+        exit 0
+    fi
+    if [ "$running" = "$installed" ]; then
+        echo "in-sync running=$running"
+    else
+        echo "needs-reboot running=$running installed=$installed"
+    fi
+  register: _upgrade_kernel_check
+  changed_when: false
+
+- name: Stat critical services for state report
+  ansible.builtin.shell: |
+    for svc in elogind sddm gdm dbus networkmanager udev; do
+        if [ -f /etc/init.d/$svc ]; then
+            if rc-service $svc status >/dev/null 2>&1; then
+                echo "$svc: up"
+            else
+                echo "$svc: DOWN"
+            fi
+        fi
+    done
+  register: _upgrade_svc_state
+  changed_when: false
+
+- name: Quick PAM sanity (sddm + greetd if present)
+  ansible.builtin.shell: |
+    out=""
+    for svc in sddm sddm-greeter sddm-autologin gdm gdm-launch-environment greetd; do
+        for d in /etc/pam.d /usr/lib/pam.d; do
+            if [ -f "$d/$svc" ]; then
+                # Cheap parse — flag base-* / system-local-login refs
+                # whose target file is missing.  This is exactly the
+                # SDDM regression that bit us last round.
+                while read -r line; do
+                    case "$line" in
+                        *include*base-*|*include*system-local-login*)
+                            target=$(echo "$line" | awk '{print $NF}')
+                            [ -f "/etc/pam.d/$target" ] || \
+                              [ -f "/usr/lib/pam.d/$target" ] || \
+                              out="$out\n$svc references missing PAM file: $target"
+                            ;;
+                    esac
+                done < "$d/$svc"
+            fi
+        done
+    done
+    [ -z "$out" ] && echo "ok" || printf "$out"
+  register: _upgrade_pam_check
+  changed_when: false
+
+- name: Stash health snapshot
+  ansible.builtin.set_fact:
+    _upgrade_health:
+      kernel: "{{ _upgrade_kernel_check.stdout }}"
+      services: "{{ _upgrade_svc_state.stdout_lines }}"
+      pam: "{{ _upgrade_pam_check.stdout }}"

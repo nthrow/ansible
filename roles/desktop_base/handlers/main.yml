@@ -1,0 +1,9 @@
+---
+- name: reload udev rules
+  ansible.builtin.command: udevadm control --reload-rules
+
+- name: retrigger sound subsystem
+  # Re-applies udev rules to existing sound devices so the PULSE_IGNORE
+  # change takes effect without a reboot.  Limiting to subsystem=sound
+  # avoids re-triggering everything else.
+  ansible.builtin.command: udevadm trigger --subsystem-match=sound --action=add

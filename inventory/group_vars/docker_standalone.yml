@@ -1,2 +1,11 @@
 ---
 docker_swarm_role: none
+
+# Standalone hosts default to rootless (sane default for single-box
+# headless docker — no shared docker.sock attack surface).  Each
+# standalone host must set docker_rootless_user in its host_vars,
+# pointing at a pre-existing user.  See host_vars/airpad.yml for an
+# example.
+#
+# To run rootful instead, set `docker_rootless: false` per-host.
+docker_rootless: true

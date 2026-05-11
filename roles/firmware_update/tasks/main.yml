@@ -1,0 +1,58 @@
+---
+- name: Install fwupd
+  community.general.apk:
+    name:
+      - fwupd
+      - fwupd-openrc
+      - fwupd-efi
+      - fwupd-grub
+    state: present
+  when: firmware_update_enable
+
+- name: Enable fwupd service
+  ansible.builtin.service:
+    name: fwupd
+    enabled: true
+    state: started
+  when: firmware_update_enable
+
+- name: Check LVFS remote state
+  # fwupdmgr enable-remote prints "Successfully enabled remote" even
+  # when the remote is already enabled, so we can't use its output for
+  # idempotency. Read /etc/fwupd/remotes.d/lvfs.conf directly instead.
+  ansible.builtin.command: grep -E '^Enabled=' /etc/fwupd/remotes.d/lvfs.conf
+  register: lvfs_remote_state
+  changed_when: false
+  failed_when: false   # missing file or no match → treat as not enabled
+  when: firmware_update_enable
+
+- name: Ensure LVFS remote enabled
+  ansible.builtin.command: fwupdmgr enable-remote -y lvfs
+  when:
+    - firmware_update_enable
+    - "'Enabled=true' not in (lvfs_remote_state.stdout | default(''))"
+
+- name: Drop periodic refresh+report script
+  ansible.builtin.template:
+    src: firmware-update-report.sh.j2
+    dest: "/etc/periodic/{{ firmware_update_refresh_cron }}/firmware-update-report"
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - firmware_update_enable
+    - firmware_update_refresh_cron != 'off'
+
+- name: Remove report script from non-target periodic dirs
+  ansible.builtin.file:
+    path: "/etc/periodic/{{ item }}/firmware-update-report"
+    state: absent
+  loop:
+    - 15min
+    - hourly
+    - daily
+    - weekly
+    - monthly
+  when:
+    - firmware_update_enable
+    - item != firmware_update_refresh_cron

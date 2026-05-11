@@ -222,21 +222,66 @@ ansible-playbook -i inventory/hosts.yml playbooks/<x>.yml -l <hostname>
 
 ## Recovery flow
 
-If a bootstrap.sh-installed host won't boot:
+If a bootstrap.sh-installed host won't boot, the right recovery path
+depends on what's broken.
 
-### From the Alpine extended LiveUSB
+### Fast path: ESP-only damage (no ZFS keys needed)
+
+If only the EFI bootloader or other ESP-side files are damaged
+(`/efi/EFI/boot/bootx64.efi` missing, renamed, or replaced with an
+unsigned binary), the ESP is plain FAT32 — you can fix it from any
+LiveUSB without unlocking LUKS or ZFS:
 
 ```sh
+mount /dev/nvme0n1p1 /mnt
+ls /mnt/EFI/boot/
+# fix what's broken on the ESP — e.g. rename a .bak back into place,
+# copy in a known-good signed bootx64.efi from elsewhere, etc.
+umount /mnt
+poweroff
+```
+
+Common failures that fit this path:
+- The bootloader file got renamed or deleted
+- A previous fix left an `.efi.bak` in place
+- A failed grub re-install left the wrong binary at the fallback path
+
+Try this first if the firmware error is "no bootable device" or
+"image not found / Access Denied" — it's the cheapest recovery.
+
+### Full chroot recovery (boot/initramfs/kernel/grub damage)
+
+If the damage is inside `/boot` (kernel, initramfs, GRUB config) or
+the rootfs, you need to enter the encrypted system. From the Alpine
+**extended** LiveUSB:
+
+```sh
+# 1. install the tools we need. The extended ISO has zfs/cryptsetup
+#    in its repos but doesn't pre-install the userspace.
+apk add zfs cryptsetup
 modprobe zfs
-zpool import -R /mnt rpool          # prompts for ZFS passphrase
-mount -t zfs rpool/ROOT/alpine /mnt
+
+# 2. import the pool, then load the encryption key separately.
+#    zpool import alone does NOT prompt for a passphrase; ZFS
+#    native encryption is loaded per-dataset via zfs load-key.
+zpool import -R /mnt rpool
+zfs load-key -L prompt rpool          # type the 25-word xkcdpass
+mount -t zfs rpool/ROOT/alpine /mnt   # mountpoint=legacy on root
+
+# 3. unlock /boot using the keyfile from the now-mounted rootfs
 cryptsetup luksOpen /dev/nvme0n1p2 boot \
-    -d /mnt/etc/fstab.boot_keyfile  # use saved keyfile
-mount /dev/mapper/boot /mnt/boot
-mount /dev/nvme0n1p1   /mnt/efi
+    -d /mnt/etc/fstab.boot_keyfile
+mount -t ext4 /dev/mapper/boot /mnt/boot   # explicit -t ext4: the
+                                            # busybox mount on the
+                                            # extended LiveUSB doesn't
+                                            # autodetect this layout
+
+mount /dev/nvme0n1p1 /mnt/efi
+
+# 4. bind kernel filesystems and chroot
 mount -t proc /proc /mnt/proc
-mount --rbind /dev  /mnt/dev
-mount --rbind /sys  /mnt/sys
+mount --rbind /dev   /mnt/dev
+mount --rbind /sys   /mnt/sys
 chroot /mnt
 ```
 
@@ -246,6 +291,109 @@ You're now in the broken system. Common fixes:
 - Re-install grub: `grub-install --target=x86_64-efi --efi-directory=/efi`
 - Re-sign bootloader: `sbsign --key /boot/secureboot/sb.key
   --cert /boot/secureboot/sb.crt /efi/EFI/boot/bootx64.efi`
+
+Cleanup and reboot:
+
+```sh
+exit                       # leave chroot
+# busybox umount on the LiveUSB lacks -R; unwind manually,
+# using -l (lazy) on rbind mounts to handle nested submounts:
+umount -l /mnt/sys
+umount -l /mnt/dev
+umount /mnt/proc
+umount /mnt/efi
+umount /mnt/boot
+umount /mnt
+zpool export rpool
+poweroff
+```
+
+In a pinch, `poweroff` alone is sufficient — the kernel force-
+unmounts during shutdown. The explicit `zpool export rpool` is for
+clean ZFS labels; without it, the next normal boot will need `-f`
+on the import (the bootstrap-installed initramfs already passes
+`-f` so this is mostly cosmetic, but it matters in production
+when juggling pools across machines).
+
+### Recovery under Secure Boot enforcing
+
+Stock Alpine LiveUSB binaries are **unsigned** — the extended ISO's
+`/efi/boot/bootx64.efi` carries no signature table at all. If you've
+enrolled a self-signed CA into firmware DB and Secure Boot is
+enforcing, OVMF (or your bare-metal UEFI) will refuse to launch the
+LiveUSB with `Access Denied` / `Image not authorized`.
+
+Workaround for each recovery, until a signed-recovery-image story
+exists for this stack:
+
+1. Boot the broken host with the LiveUSB inserted.
+2. Enter firmware setup (Esc / F2 / Del at TianoCore or POST splash).
+3. **Device Manager → Secure Boot Configuration**, toggle
+   **"Attempt Secure Boot"** off. Save & reset.
+4. The firmware now boots the LiveUSB. Run the recovery flow above.
+5. After `poweroff`, re-enter firmware and **re-enable** Attempt
+   Secure Boot before booting into the (now-fixed) installed system
+   — otherwise SB stays off until you remember to flip it back.
+
+Future improvement: producing a signed-with-the-install-CA recovery
+ISO at install time would skip steps 2-3 and 5. Not implemented;
+tracked as a TODO.
+
+### Migrating an older install from openssl-derived to xkcdpass keys
+
+Earlier versions of bootstrap.sh generated the ZFS keyfile via
+`openssl rand ...` (binary-shaped) before xkcdpass was confirmed
+available in Alpine's `community` repo. Such installs have a ZFS
+"passphrase" that's effectively impossible to type at a recovery
+prompt — leaving them recoverable only if the keyfile bytes are
+saved out-of-band somewhere accessible from a LiveUSB.
+
+To rotate to a typeable xkcdpass passphrase **without re-encrypting
+the data** (uses ZFS native key rotation, which only re-wraps the
+master key — fast even on multi-TB pools):
+
+```sh
+# back up the old keyfile so we can roll back if anything fails
+cp -p /etc/fstab.zfs_keyfile /etc/fstab.zfs_keyfile.openssl-bak
+
+# generate a typeable replacement (xkcdpass lives in edge/community)
+apk add xkcdpass
+umask 077
+xkcdpass -n 25 > /etc/fstab.zfs_keyfile.new
+chmod 0400 /etc/fstab.zfs_keyfile.new
+
+# SAVE THE NEW PASSPHRASE OUT-OF-BAND BEFORE PROCEEDING
+cat /etc/fstab.zfs_keyfile.new   # copy these 25 words to your
+                                  # password manager or paper backup
+                                  # NOW
+
+# rotate the wrapping key. This re-derives + re-wraps in place;
+# the master key (and therefore your data) is untouched.
+zfs change-key -o keylocation=file:///etc/fstab.zfs_keyfile.new rpool
+zfs get keystatus rpool   # should still read "available"
+
+# consolidate to the canonical /crypto_keyfile.bin path that
+# initramfs's cryptkey feature expects
+mv /etc/fstab.zfs_keyfile.new /etc/fstab.zfs_keyfile
+zfs set keylocation=file:///crypto_keyfile.bin rpool
+
+# rebuild initramfs to embed the new keyfile content
+mkinitfs $(ls /lib/modules)
+
+# verify the rebuilt initramfs has the new keyfile
+diff <(sha256sum /etc/fstab.zfs_keyfile | cut -d' ' -f1) \
+     <(zcat /boot/initramfs-lts | cpio -i --to-stdout etc/fstab.zfs_keyfile 2>/dev/null | sha256sum | cut -d' ' -f1)
+# (no output = match)
+
+# reboot; if auto-unlock works, the migration is done. Then:
+# rm /etc/fstab.zfs_keyfile.openssl-bak
+```
+
+If the reboot fails to auto-unlock, you can recover via LiveUSB
+with either the **new** xkcdpass passphrase (via
+`zfs load-key -L prompt rpool` and the words you saved) or by
+restoring the `.openssl-bak` file and rebuilding initramfs to
+re-embed the old key.
 
 ## Recovery: lost the boot LUKS passphrase
 
@@ -257,20 +405,32 @@ key works to unlock. So if you forgot the passphrase:
 2. Add a new passphrase: `cryptsetup luksAddKey /dev/nvme0n1p2`
 3. (Optional) Remove the old slot if you remember its keyslot index.
 
-## Recovery: ZFS won't import
+## Recovery: ZFS won't import or you lost the ZFS key
 
-If the keyfile is intact:
+If the keyfile is intact and accessible:
 ```sh
 zpool import rpool
 zfs load-key -L file:///etc/fstab.zfs_keyfile rpool
 ```
 
-If the keyfile is gone (you deleted /etc/fstab.zfs_keyfile somehow),
-the pool is unrecoverable without a backup. **This is why the
-bootstrap.sh's optional GPG-encrypted backup step (in the original
-alpine.sh from wejn.org) is worth setting up** — encrypts the
-keyfiles to your gpg key and drops the .asc files on the ESP for
-recovery from a different machine.
+If the keyfile is gone (deleted, or living on an encrypted dataset
+you can't unlock) **and** you have no out-of-band copy of its
+contents (the xkcdpass words or the openssl-derived bytes), **the
+pool is unrecoverable.**
+
+Two mitigations should be in place before this becomes a problem:
+
+1. **Save the xkcdpass words out-of-band at install time.** Password
+   manager, paper backup, or both. The 25-word xkcdpass keeps its
+   ~323 bits of entropy strong as long as the words stay private;
+   the threat model isn't passphrase guessing, it's losing the
+   passphrase entirely.
+2. **GPG-encrypted backup on ESP** (originally in `alpine.sh` from
+   wejn.org; not currently implemented in this bootstrap). Encrypts
+   the keyfiles to your gpg public key and drops the `.asc` files in
+   `/efi`, so a different machine with your gpg secret key can
+   recover. Tracked as a TODO; the alpine.sh approach is straight-
+   forward to port if you want it.
 
 ## Customization points
 

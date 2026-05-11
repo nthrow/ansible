@@ -1,0 +1,86 @@
+---
+# Cross-DE prep: packages, fonts, and the udev/elogind/acpid/udisks2
+# stack.  Per-DE roles run after this and install only their own
+# session manager + DE-specific app set on top.
+
+- name: Install base desktop packages
+  community.general.apk:
+    name: "{{ desktop_base_packages }}"
+    state: present
+
+- name: Install fonts
+  community.general.apk:
+    name: "{{ desktop_base_font_packages }}"
+    state: present
+
+# Alpine boots with busybox `mdev` populating /dev, but every desktop
+# environment needs eudev for proper udev-rule processing — in particular
+# /usr/lib/udev/rules.d/71-seat.rules tags DRM devices `master-of-seat`,
+# which is what makes elogind report CanGraphical=true on seat0.  Both
+# SDDM and GDM check that property before showing a greeter.  Switch
+# sysinit from mdev to eudev.
+
+- name: Remove mdev from sysinit (replaced by udev for proper rule processing)
+  ansible.builtin.command: rc-update del mdev sysinit
+  register: _desktop_mdev_del
+  changed_when: _desktop_mdev_del.rc == 0
+  failed_when:
+    - _desktop_mdev_del.rc != 0
+    - "'is not in the runlevel' not in _desktop_mdev_del.stderr"
+    - "'does not exist' not in _desktop_mdev_del.stderr"
+
+- name: Enable udev openrc services in sysinit
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    runlevel: sysinit
+  loop:
+    - udev
+    - udev-trigger
+    - udev-settle
+
+- name: Stat shared desktop init scripts
+  ansible.builtin.stat:
+    path: "/etc/init.d/{{ item }}"
+  loop: [elogind, acpid, udisks2, cgroups]
+  register: _desktop_base_inits
+
+- name: Enable shared desktop services (default runlevel)
+  ansible.builtin.service:
+    name: "{{ item.item }}"
+    enabled: true
+    runlevel: default
+    state: started
+  loop: "{{ _desktop_base_inits.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.stat.exists
+
+- name: Enable tlp at boot
+  ansible.builtin.service:
+    name: tlp
+    enabled: true
+    runlevel: boot
+    state: started
+
+# ---- Audio: hide GPU HDMI/DP outputs from PulseAudio --------------
+# Alpine's plasma-pa hard-depends on the `pulseaudio` package, so the
+# audio stack on a Plasma host is classic PulseAudio (not pipewire-pulse)
+# even with pipewire + wireplumber installed.  BT auto-switch and unmute
+# behaviour work out-of-the-box on this stack — no .pa drop-ins needed.
+#
+# The one remaining nuisance is the GPU's HDMI/DP audio cluttering the
+# audio applet and getting auto-selected on BT disconnect.  The udev
+# rule below tags the GPU's HDA function with PULSE_IGNORE=1 so PA
+# never enumerates it.
+
+- name: Drop udev rule (hide GPU HDMI/DP from PulseAudio)
+  ansible.builtin.copy:
+    src: 99-pulse-ignore-hdmi-dp.rules
+    dest: /etc/udev/rules.d/99-pulse-ignore-hdmi-dp.rules
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload udev rules
+    - retrigger sound subsystem

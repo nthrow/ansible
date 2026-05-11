@@ -1,0 +1,12 @@
+---
+# Whether to install + configure fwupd at all. Set false on VMs / hosts
+# without manageable firmware to skip the whole role.
+firmware_update_enable: true
+
+# Cadence for the periodic metadata-refresh + report script. Maps to a
+# subdir of /etc/periodic/. Valid: off | 15min | hourly | daily | weekly | monthly.
+firmware_update_refresh_cron: weekly
+
+# Where the report script writes machine-readable status. Designed to be
+# scraped by monitoring (Prometheus textfile collector, Loki, etc).
+firmware_update_report_path: /var/lib/firmware-updates-pending.json

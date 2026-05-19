@@ -1,3 +1,15 @@
+{# `DisplayServer=x11` is a workaround for an open Alpine sddm bug:
+   even with sddm 0.21.0-r10 (which carries the `-DSDDM_INITIAL_VT=7`
+   build flag added in aports!100373), the wayland greeter still hangs
+   after logind discovery on real-hardware AMDGPU.  sddm dies before
+   ever launching `kwin_wayland` — the compositor stderr stays empty,
+   and the only entry past `DAEMON: Logind interface found` arrives if
+   you ever revisit the file.  Remove this once the proper Alpine fix
+   lands (aports!87588 is the candidate; still in `discussions_not_resolved`
+   as of writing).  Upstream root cause: sddm/sddm#1844. -#}
+[General]
+DisplayServer=x11
+
 [Theme]
 Current={{ sddm_theme }}
 CursorTheme={{ sddm_cursor_theme }}

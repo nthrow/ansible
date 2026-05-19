@@ -14,6 +14,7 @@
     owner: root
     group: root
     mode: "0644"
+  notify: restart sddm
 
 - name: Stat sddm init script
   ansible.builtin.stat:
@@ -25,7 +26,21 @@
     name: sddm
     enabled: true
     runlevel: default
-    state: started
+  when: _kde_sddm_init.stat.exists
+
+# `state: started` via ansible.builtin.service uses openrc's status check,
+# which can disagree with the underlying supervise-daemon (openrc reports
+# "stopped" while supervise-daemon has sddm running).  ansible then asks
+# rc-service to start, supervise-daemon refuses with "already running",
+# rc-service exits non-zero, ansible reports failed.  Workaround: call
+# rc-service ourselves and treat "already running" as non-failure.
+- name: Ensure sddm is started (tolerant of supervise-daemon already-running)
+  ansible.builtin.command: rc-service sddm start
+  register: _kde_sddm_start
+  changed_when: "'already running' not in _kde_sddm_start.stdout + _kde_sddm_start.stderr"
+  failed_when:
+    - _kde_sddm_start.rc != 0
+    - "'already running' not in _kde_sddm_start.stdout + _kde_sddm_start.stderr"
   when: _kde_sddm_init.stat.exists
 
 # ---- default terminal: ghostty -----------------------------------

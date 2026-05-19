@@ -5,6 +5,9 @@
       - sbsigntool
       - openssl
       - kernel-hooks
+      # community.crypto.openssl_privatekey / x509_certificate / openssl_csr
+      # below all need cryptography>=3.3 on the target's interpreter.
+      - py3-cryptography
     state: present
 
 - name: Create secure-boot directory

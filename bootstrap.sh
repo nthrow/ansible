@@ -44,7 +44,10 @@ apk add --quiet sfdisk e2fsprogs e2fsprogs-extra dosfstools cryptsetup \
 # v3.x at this point (the edge-flip happens later, after setup-alpine).
 # `-X` adds a repo for this single invocation without modifying
 # /etc/apk/repositories — keeps the LiveUSB clean for setup-alpine.
+# Edge xkcdpass tracks python3~3.14, so we also need edge/main to pull
+# a compatible interpreter alongside (stable's python3 is 3.12).
 apk add --quiet --no-cache \
+	-X https://dl-cdn.alpinelinux.org/alpine/edge/main \
 	-X https://dl-cdn.alpinelinux.org/alpine/edge/community \
 	xkcdpass
 

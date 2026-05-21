@@ -1,0 +1,22 @@
+---
+- name: Stat bluetooth init script
+  ansible.builtin.stat:
+    path: /etc/init.d/bluetooth
+  register: _hardening_bt_init
+
+- name: Stop bluetooth service
+  ansible.builtin.service:
+    name: bluetooth
+    state: stopped
+  when: _hardening_bt_init.stat.exists
+  failed_when: false
+
+- name: Disable bluetooth at default runlevel
+  ansible.builtin.command: rc-update del bluetooth default
+  register: _hardening_bt_del
+  changed_when: _hardening_bt_del.rc == 0
+  failed_when:
+    - _hardening_bt_del.rc != 0
+    - "'is not in the runlevel' not in _hardening_bt_del.stderr"
+    - "'does not exist' not in _hardening_bt_del.stderr"
+  when: _hardening_bt_init.stat.exists

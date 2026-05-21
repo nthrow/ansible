@@ -1,0 +1,15 @@
+# Managed by Ansible (hardening role).
+# sshguard 2.x config for Alpine + iptables + busybox syslogd.
+# Tunables live in roles/hardening/defaults/main.yml.
+
+BACKEND="/usr/libexec/sshg-fw-iptables"
+# Busybox syslogd writes auth/daemon facility messages to
+# /var/log/messages.  Tail it from the current end (don't replay old
+# entries) — sshg-blocker reads single-line events on stdin.
+LOGREADER="LANG=C tail -F -n0 /var/log/messages"
+THRESHOLD={{ hardening_sshguard_threshold }}
+BLOCK_TIME={{ hardening_sshguard_block_time }}
+DETECTION_TIME={{ hardening_sshguard_detection_time }}
+{% if hardening_sshguard_whitelist_path %}
+WHITELIST_FILE={{ hardening_sshguard_whitelist_path }}
+{% endif %}

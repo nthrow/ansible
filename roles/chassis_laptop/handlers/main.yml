@@ -1,0 +1,5 @@
+---
+- name: restart elogind
+  ansible.builtin.service:
+    name: elogind
+    state: restarted

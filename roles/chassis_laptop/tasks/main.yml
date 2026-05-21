@@ -1,0 +1,34 @@
+---
+- name: Install chassis_laptop infrastructure packages
+  community.general.apk:
+    name: "{{ chassis_laptop_packages }}"
+    state: present
+
+- name: Enable elogind + acpid at default runlevel
+  ansible.builtin.service:
+    name: "{{ item }}"
+    enabled: true
+    runlevel: default
+    state: started
+  loop:
+    - elogind
+    - acpid
+
+# `community.general.apk` doesn't auto-create /etc/elogind on a fresh
+# install if elogind's apk hooks haven't fired yet, so be defensive.
+- name: Ensure /etc/elogind exists
+  ansible.builtin.file:
+    path: /etc/elogind
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template /etc/elogind/logind.conf
+  ansible.builtin.template:
+    src: logind.conf.j2
+    dest: /etc/elogind/logind.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart elogind

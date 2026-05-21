@@ -1,0 +1,9 @@
+# Managed by Ansible (chassis_laptop role).
+# Headless-laptop tuning: don't react to the lid switch — leave the
+# box running with the lid closed regardless of AC/battery/dock state.
+# Other elogind options keep their compiled-in defaults; uncomment +
+# template them below if you need to override anything else.
+[Login]
+HandleLidSwitch={{ chassis_laptop_handle_lid_switch }}
+HandleLidSwitchExternalPower={{ chassis_laptop_handle_lid_switch_external_power }}
+HandleLidSwitchDocked={{ chassis_laptop_handle_lid_switch_docked }}

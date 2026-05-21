@@ -10,6 +10,11 @@
 -A OUTPUT -o lo -j ACCEPT
 {% endif %}
 
+{# Blanket trust: anything from these CIDRs is ACCEPTed unconditionally. #}
+{% for s in firewall_trusted_sources %}
+-A INPUT -s {{ s }} -j ACCEPT
+{% endfor %}
+
 {% if firewall_allow_icmp %}
 -A INPUT  -p icmp -m state --state NEW --icmp-type 8 -j ACCEPT
 -A INPUT  -p icmp -m state --state ESTABLISHED,RELATED -j ACCEPT

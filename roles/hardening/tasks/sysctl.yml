@@ -1,0 +1,15 @@
+---
+- name: Drop sysctl hardening overlay
+  ansible.builtin.template:
+    src: 99-hardening.conf.j2
+    dest: /etc/sysctl.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload sysctl
+
+# Force the sysctl reload BEFORE the play ends so we can verify the
+# values in a follow-up task / report.  Without this, the handler runs
+# at end-of-play and the rest of the role sees pre-reload state.
+- name: Flush handlers (apply sysctl now)
+  ansible.builtin.meta: flush_handlers

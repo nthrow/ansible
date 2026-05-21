@@ -20,6 +20,16 @@ firewall_loopback_protect: true
 # ICMP: respond to ping by default (echo on v4; full ICMPv6 on v6).
 firewall_allow_icmp: true
 
+# Trusted source CIDRs.  Each entry produces a blanket
+# `-A INPUT -s <cidr> -j ACCEPT` — anything from that subnet bypasses
+# the per-port allow lists below.  Useful for VPN networks where you
+# want any service on the host (including rootless docker's published
+# ports) reachable without enumerating them.  IPv4 and IPv6 are
+# separate lists so a host doesn't accidentally allow IPv6 traffic
+# via an IPv4-only entry.
+firewall_trusted_sources: []
+firewall_trusted_sources_v6: []
+
 # Allow rules.
 #   short form:   - 22
 #   dict form:    - { port: 22, in: wg0, source: 10.0.0.0/24 }

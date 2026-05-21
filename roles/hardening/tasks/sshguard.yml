@@ -1,0 +1,37 @@
+---
+- name: Install sshguard
+  community.general.apk:
+    name:
+      - sshguard
+      - sshguard-openrc
+    state: present
+
+# Alpine's sshguard apk ships zero example config — the binary refuses
+# to start without /etc/sshguard.conf.  Template our own.
+- name: Drop /etc/sshguard.conf
+  ansible.builtin.template:
+    src: sshguard.conf.j2
+    dest: /etc/sshguard.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart sshguard
+
+# Empty whitelist file — sshguard refuses to start if WHITELIST_FILE
+# is set but the file is missing.  Use `ansible.builtin.copy` with
+# force=false so manual additions to the whitelist survive re-applies.
+- name: Ensure sshguard whitelist file exists (empty by default)
+  ansible.builtin.copy:
+    dest: "{{ hardening_sshguard_whitelist_path }}"
+    content: ""
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+
+- name: Enable sshguard at default runlevel
+  ansible.builtin.service:
+    name: sshguard
+    enabled: true
+    runlevel: default
+    state: started

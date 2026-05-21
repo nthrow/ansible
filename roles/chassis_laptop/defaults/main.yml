@@ -1,0 +1,29 @@
+---
+# chassis_laptop — minimal config for running a laptop as a headless
+# server.  Specifically, stops elogind from suspending the box when
+# the lid is closed (the default behaviour on most distros, including
+# Alpine).  Keep the role's footprint small so it's easy to apply
+# alongside any other role tree.
+
+# Lid-switch handling.  Valid values are the same as systemd-logind's:
+# `ignore`, `poweroff`, `reboot`, `halt`, `kexec`, `suspend`, `hibernate`,
+# `hybrid-sleep`, `suspend-then-hibernate`, `lock`, `factory-reset`.
+# Headless-server defaults: ignore the lid in all three states.
+chassis_laptop_handle_lid_switch: ignore
+chassis_laptop_handle_lid_switch_external_power: ignore
+chassis_laptop_handle_lid_switch_docked: ignore
+
+# Infrastructure packages the role ensures are present.  elogind is
+# load-bearing for rootless docker (it provides /run/user/$UID and the
+# session API); eudev populates /dev properly; acpid handles power
+# events (clean shutdown on power-button press).  All three are also
+# pulled in by desktop_base on workstations — listed here so the role
+# is usable on a fresh server-flavored install where desktop_base
+# never ran.
+chassis_laptop_packages:
+  - elogind
+  - elogind-openrc
+  - polkit-elogind
+  - eudev
+  - acpid
+  - acpid-openrc

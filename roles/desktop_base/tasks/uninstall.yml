@@ -1,0 +1,75 @@
+---
+# Tear down desktop_base.  Removes the desktop-only packages + fonts
+# + the GPU-HDMI udev rule.  Leaves cross-platform infrastructure
+# (elogind, eudev, acpid, polkit-elogind, fwupd) in place — these are
+# load-bearing for non-desktop roles too (e.g. `docker_host` needs
+# elogind for rootless container session/user-runtime; `firmware_update`
+# wraps fwupd).
+#
+# Run AFTER the per-DE uninstall (`uninstall_kde` / `uninstall_gnome`).
+# Doing them together:
+#
+#   ansible-playbook desktop.yml \
+#     --tags uninstall_kde,uninstall_desktop_base --limit <host>
+#
+# `eudev` stays in sysinit (the mdev→eudev swap from install.yml is
+# NOT rolled back — eudev is strictly better than mdev for any modern
+# system, server included).
+
+- name: Stop tlp (was enabled at boot)
+  ansible.builtin.service:
+    name: tlp
+    state: stopped
+  failed_when: false
+
+- name: Disable tlp at boot runlevel
+  ansible.builtin.command: rc-update del tlp boot
+  register: _desktop_base_tlp_del
+  changed_when: _desktop_base_tlp_del.rc == 0
+  failed_when:
+    - _desktop_base_tlp_del.rc != 0
+    - "'is not in the runlevel' not in _desktop_base_tlp_del.stderr"
+    - "'does not exist' not in _desktop_base_tlp_del.stderr"
+
+- name: Stop udisks2 (was at default runlevel)
+  ansible.builtin.service:
+    name: udisks2
+    state: stopped
+  failed_when: false
+
+- name: Disable udisks2 at default runlevel
+  ansible.builtin.command: rc-update del udisks2 default
+  register: _desktop_base_udisks_del
+  changed_when: _desktop_base_udisks_del.rc == 0
+  failed_when:
+    - _desktop_base_udisks_del.rc != 0
+    - "'is not in the runlevel' not in _desktop_base_udisks_del.stderr"
+    - "'does not exist' not in _desktop_base_udisks_del.stderr"
+
+- name: Remove udev rule (GPU HDMI/DP PulseAudio suppression)
+  ansible.builtin.file:
+    path: /etc/udev/rules.d/99-pulse-ignore-hdmi-dp.rules
+    state: absent
+
+# Use `ansible.builtin.command` not `community.general.apk` for the same
+# reason desktop_kde/uninstall.yml does: apk returns non-zero when a
+# package is held by reverse-deps, and the apk module reports that as
+# a generic failure.  `command` lets us inspect stderr for the
+# "World updated" success-case and gate on it.
+- name: apk del desktop-only packages
+  ansible.builtin.command:
+    cmd: "apk del {{ desktop_base_uninstall_packages | join(' ') }}"
+  register: _desktop_base_apk_del
+  changed_when: "'OK:' in _desktop_base_apk_del.stdout"
+  failed_when:
+    - _desktop_base_apk_del.rc != 0
+    - "'World updated' not in _desktop_base_apk_del.stdout"
+
+- name: apk del desktop fonts
+  ansible.builtin.command:
+    cmd: "apk del {{ desktop_base_font_packages | join(' ') }}"
+  register: _desktop_base_apk_del_fonts
+  changed_when: "'OK:' in _desktop_base_apk_del_fonts.stdout"
+  failed_when:
+    - _desktop_base_apk_del_fonts.rc != 0
+    - "'World updated' not in _desktop_base_apk_del_fonts.stdout"

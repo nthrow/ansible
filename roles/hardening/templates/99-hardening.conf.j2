@@ -1,0 +1,6 @@
+# Managed by Ansible (hardening role).
+# Loaded by sysctl --system at boot.  See defaults/main.yml in the
+# role for an explanation of each knob.
+{% for k, v in hardening_sysctl.items() %}
+{{ k }} = {{ v }}
+{% endfor %}

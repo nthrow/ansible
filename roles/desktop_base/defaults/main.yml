@@ -55,6 +55,44 @@ desktop_base_packages:
   - xdg-utils
   - pinentry
 
+# Packages the uninstall path removes.  Intentionally a SUBSET of
+# desktop_base_packages — `elogind`, `elogind-openrc`, `polkit-elogind`,
+# `eudev`, `acpid`, `acpid-openrc`, `fwupd`, `fwupd-efi` are KEPT
+# because non-desktop roles (chassis_laptop, docker_host, firmware_update)
+# depend on them.  Adjust both lists together when adding new desktop
+# packages.
+desktop_base_uninstall_packages:
+  - power-profiles-provider
+  - powertop
+  - tlp
+  - tlp-openrc
+  - tlp-rdw
+  - udisks2
+  - udisks2-openrc
+  - mesa-va-gallium
+  - mesa-vulkan-ati
+  - vulkan-loader
+  - vulkan-tools
+  - xclip
+  - xf86-input-libinput
+  - xhost
+  - xinit
+  - xorg-server
+  - ovmf
+  - alacritty
+  - ghostty
+  - firefox
+  - mpv
+  - vlc
+  - gparted
+  - dconf-editor
+  - apk-polkit-rs
+  - libqrencode
+  - xdg-desktop-portal
+  - xdg-user-dirs
+  - xdg-utils
+  - pinentry
+
 # Fonts — same set used by every DE.  If you add or drop a font, do
 # it here, not in the per-DE roles.
 desktop_base_font_packages:

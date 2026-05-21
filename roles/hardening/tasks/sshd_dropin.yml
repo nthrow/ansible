@@ -1,0 +1,22 @@
+---
+- name: Ensure /etc/ssh/sshd_config.d exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Drop sshd hardening overlay
+  ansible.builtin.template:
+    src: 01-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/01-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    # %s is ansible's placeholder for the temp file being validated.
+    # sshd -t on the drop-in alone is a syntax check (defaults fill
+    # everything else); it won't catch interactions with the base
+    # sshd_config, but that's caught at handler-restart time.
+    validate: "/usr/sbin/sshd -t -f %s"
+  notify: restart sshd

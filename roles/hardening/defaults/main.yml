@@ -1,0 +1,76 @@
+---
+# Hardening role — opt-in via `hardened` group membership.  See README
+# for what each knob does and the threat model it addresses.
+#
+# Tunable per-host via host_vars or per-group via group_vars/hardened.yml.
+
+# ---- sshd drop-in ---------------------------------------------------
+# These are layered ON TOP of the sshd role's base config via
+# /etc/ssh/sshd_config.d/01-hardening.conf.
+hardening_sshd_max_auth_tries: 3
+hardening_sshd_login_grace_time: 30
+# Restrict ssh logins to members of the given group.  Comment out (set
+# to empty list) to skip the AllowGroups directive entirely.  Note:
+# root needs to be in this group (or in another listed here) to keep
+# the root-via-key admin path working.
+hardening_sshd_allow_groups:
+  - wheel
+
+# ---- sysctl drop-in -------------------------------------------------
+# Override individual values via host_vars; full dict-replace.  The
+# default set is the conventional "harden a Linux server" baseline.
+hardening_sysctl:
+  # IP spoof protection (strict reverse-path filter)
+  net.ipv4.conf.all.rp_filter: 1
+  net.ipv4.conf.default.rp_filter: 1
+  # Ignore ICMP redirects (would let an attacker on-LAN reroute traffic)
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  # Don't ACT as a router (don't send redirects)
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  # Source-routed packets are a classic spoofing vector — refuse them
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  # Log packets with impossible addresses
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.conf.default.log_martians: 1
+  # ICMP hygiene
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+  # SYN flood mitigation
+  net.ipv4.tcp_syncookies: 1
+  # Kernel info leak hardening
+  kernel.dmesg_restrict: 1
+  kernel.kptr_restrict: 2
+  kernel.yama.ptrace_scope: 1
+  # Filesystem hygiene
+  fs.suid_dumpable: 0
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.protected_fifos: 2
+  fs.protected_regular: 2
+
+# ---- sshguard -------------------------------------------------------
+# Lightweight bruteforce mitigator.  Alpine doesn't ship a default
+# /etc/sshguard.conf — the role templates one (see
+# templates/sshguard.conf.j2).  Defaults block at THRESHOLD attack
+# points (each bad-auth ~10 points) over DETECTION_TIME seconds, for
+# BLOCK_TIME seconds.
+hardening_install_sshguard: true
+hardening_sshguard_threshold: 30           # ~3 failed attempts triggers
+hardening_sshguard_block_time: 1200        # 20 min initial block
+hardening_sshguard_detection_time: 1800    # 30 min attack window
+hardening_sshguard_whitelist_path: /etc/sshguard.whitelist
+
+# ---- bluetooth ------------------------------------------------------
+# Headless servers don't need bluetooth.  Stops + disables the
+# service (does NOT apk del the bluez packages — that's left manual
+# in case you want to keep them installed for later).
+hardening_disable_bluetooth: true

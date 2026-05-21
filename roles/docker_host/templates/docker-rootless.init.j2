@@ -41,8 +41,12 @@ depend() {
 
 start_pre() {
     # /run/user/$UID is normally created by elogind on login; on a
-    # headless box with no interactive sessions it doesn't exist.
-    # Create it before the daemon starts.
+    # headless box with no interactive sessions neither it nor its
+    # parent /run/user exist at boot.  checkpath only creates the
+    # leaf — `mkdir -p` ensures the parent too, otherwise checkpath
+    # errors with "No such file or directory" and the daemon ends
+    # up writing docker.sock under /tmp (or not coming up at all).
+    mkdir -p "$_runtime_dir"
     checkpath -d -m 0700 -o "$_uid:$_gid" "$_runtime_dir"
     checkpath -f -m 0644 -o "$_uid:$_gid" /var/log/docker-rootless.log
 }

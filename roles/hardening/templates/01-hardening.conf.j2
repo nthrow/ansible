@@ -1,0 +1,7 @@
+# Managed by Ansible (hardening role). Layered onto sshd_config via
+# Include /etc/ssh/sshd_config.d/*.conf in the base config.
+MaxAuthTries {{ hardening_sshd_max_auth_tries }}
+LoginGraceTime {{ hardening_sshd_login_grace_time }}
+{% if hardening_sshd_allow_groups | length > 0 %}
+AllowGroups {{ hardening_sshd_allow_groups | join(' ') }}
+{% endif %}

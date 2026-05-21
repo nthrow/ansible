@@ -13,7 +13,28 @@
   gather_facts: true
   roles:
     - common
+    # zfs: keep ROOT datasets + add server-specific ones (e.g. an
+    # isolated /opt for project storage) via the zfs_datasets list
+    # in group_vars/host_vars.  Purely additive — won't destroy
+    # existing datasets that aren't listed.
+    - zfs
+    # chassis_laptop: lid-switch=ignore for laptop hosts running as
+    # headless servers.  The elogind install it does is load-bearing
+    # for rootless docker on any host, so the role applies
+    # unconditionally; on a non-laptop the lid setting is a no-op.
+    - chassis_laptop
     - sshd
     - firewall
     - docker_host
     - monitoring_agent
+    # registry: opt-in via `image_registries` group membership.  Runs
+    # a Docker registry:2 container on the host under the rootless
+    # docker user.  See roles/registry/README.md.
+    - role: registry
+      when: "'image_registries' in group_names"
+    # hardening: opt-in via `hardened` group membership.  Last in the
+    # role list so its sshd / sysctl / service-disable changes layer
+    # cleanly on top of everything else.  See roles/hardening/README.md
+    # for what each knob does and how to scope it down.
+    - role: hardening
+      when: "'hardened' in group_names"

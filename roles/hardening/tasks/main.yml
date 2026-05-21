@@ -1,0 +1,18 @@
+---
+# Orchestrator for the hardening role.  Each sub-task is gated by a
+# `hardening_*` var (default true) so individual knobs can be turned
+# off in host_vars without rewriting the role.
+
+- name: Apply sshd drop-in
+  ansible.builtin.include_tasks: sshd_dropin.yml
+
+- name: Apply sysctl drop-in
+  ansible.builtin.include_tasks: sysctl.yml
+
+- name: Install sshguard
+  ansible.builtin.include_tasks: sshguard.yml
+  when: hardening_install_sshguard | bool
+
+- name: Disable bluetooth
+  ansible.builtin.include_tasks: bluetooth.yml
+  when: hardening_disable_bluetooth | bool

@@ -1,0 +1,37 @@
+---
+# registry — runs a Docker registry container on a docker_host as a
+# pull/push target for images.  Lives under the host's rootless docker
+# user (default: docker_rootless_user) with persistent storage on its
+# own ZFS dataset.
+#
+# Push pattern from a client (pad):
+#   docker tag myimage air:5000/myimage:tag
+#   docker push air:5000/myimage:tag
+# Client side needs `insecure-registries: ["air:5000"]` in its
+# /etc/docker/daemon.json (or per-user equivalent for rootless).  The
+# role only configures the SERVER's own daemon — clients are handled
+# separately (manual or via a future registry_client role).
+
+registry_image: "registry:2"
+registry_container_name: registry
+
+# Persistent storage.  Dataset created if missing; chowned to
+# registry_user so rootless docker can write into it.
+registry_data_dir: /opt/registry
+registry_zfs_dataset: "{{ zfs_pool }}/opt/registry"
+
+# Account that owns/runs the registry container.  Defaults to the same
+# user the host already runs rootless docker as.
+registry_user: "{{ docker_rootless_user }}"
+
+# Network exposure.  Bind to 0.0.0.0 by default; tighten via firewall
+# role rules (which interfaces accept dpt:5000) rather than via the
+# bind address — keeps the container portable.
+registry_bind_address: "0.0.0.0"
+registry_port: 5000
+
+# Self-configure: write a rootless docker daemon.json on the host
+# adding 127.0.0.1:<port> as insecure-registries so the host can
+# pull/inspect from its own registry without TLS.  Set false if you
+# plan to terminate TLS in front of the registry.
+registry_configure_local_insecure: true

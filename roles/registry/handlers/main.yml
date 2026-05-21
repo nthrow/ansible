@@ -1,0 +1,5 @@
+---
+- name: restart docker-rootless
+  ansible.builtin.service:
+    name: docker-rootless
+    state: restarted

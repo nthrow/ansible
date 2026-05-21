@@ -1,0 +1,77 @@
+---
+# rootless docker's daemon socket lives at /run/user/<uid>/docker.sock
+# and is only accessible by the owning user.  Look up the uid so the
+# `docker_container` task can target the right socket via become_user.
+- name: Look up uid of registry_user
+  ansible.builtin.command: "id -u {{ registry_user }}"
+  register: _registry_user_uid_lookup
+  changed_when: false
+
+- name: Stash registry_user_uid fact
+  ansible.builtin.set_fact:
+    registry_user_uid: "{{ _registry_user_uid_lookup.stdout | int }}"
+
+# ---- persistent storage -------------------------------------------
+- name: Ensure registry ZFS dataset exists
+  community.general.zfs:
+    name: "{{ registry_zfs_dataset }}"
+    state: present
+    extra_zfs_properties:
+      mountpoint: "{{ registry_data_dir }}"
+      canmount: "on"
+
+- name: Chown registry data dir to registry_user
+  ansible.builtin.file:
+    path: "{{ registry_data_dir }}"
+    state: directory
+    owner: "{{ registry_user }}"
+    group: "{{ registry_user }}"
+    mode: "0750"
+
+# ---- local docker daemon insecure-registries config ---------------
+# Rootless docker reads its daemon config from ~/.config/docker/daemon.json
+# (NOT /etc/docker/daemon.json which is for the rootful daemon).
+- name: Ensure rootless docker config dir exists
+  ansible.builtin.file:
+    path: "/home/{{ registry_user }}/.config/docker"
+    state: directory
+    owner: "{{ registry_user }}"
+    group: "{{ registry_user }}"
+    mode: "0755"
+  when: registry_configure_local_insecure
+
+- name: Template rootless docker daemon.json (insecure-registries)
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: "/home/{{ registry_user }}/.config/docker/daemon.json"
+    owner: "{{ registry_user }}"
+    group: "{{ registry_user }}"
+    mode: "0644"
+  when: registry_configure_local_insecure
+  notify: restart docker-rootless
+
+# Force the daemon restart now so the container task below talks to a
+# daemon that already trusts the registry as insecure.
+- name: Flush handlers before container start
+  ansible.builtin.meta: flush_handlers
+
+# ---- registry container -------------------------------------------
+- name: Run registry container (as registry_user via rootless docker)
+  community.docker.docker_container:
+    name: "{{ registry_container_name }}"
+    image: "{{ registry_image }}"
+    state: started
+    restart_policy: unless-stopped
+    pull: missing
+    published_ports:
+      - "{{ registry_bind_address }}:{{ registry_port }}:5000"
+    mounts:
+      - source: "{{ registry_data_dir }}"
+        target: /var/lib/registry
+        type: bind
+  become: true
+  become_user: "{{ registry_user }}"
+  become_method: su
+  environment:
+    DOCKER_HOST: "unix:///run/user/{{ registry_user_uid }}/docker.sock"
+    XDG_RUNTIME_DIR: "/run/user/{{ registry_user_uid }}"
